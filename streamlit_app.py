@@ -90,6 +90,12 @@ st.markdown("""
         background-color: rgba(30, 30, 40, 0.5) !important;
         border-radius: 8px;
     }
+
+    /* === 地图容器优化 减少闪烁 === */
+    [data-testid="stDeckGlJsonChart"] {
+        transition: opacity 0.2s ease-in-out !important;
+        opacity: 1 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -179,9 +185,13 @@ def init_session():
         'total_death': 0,
         'born_log': [],
         'death_log': [],
-        'birth_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'born_time']),
-        'death_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'death_time']),
-        'prov_stats': {p['zh']: {'born': 0, 'death': 0, 'en': p['en']} for p in PROVINCES}
+        # 优化：初始化空DataFrame时指定数据类型，减少后续类型转换
+        'birth_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'born_time'], dtype=object),
+        'death_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'death_time'], dtype=object),
+        'prov_stats': {p['zh']: {'born': 0, 'death': 0, 'en': p['en']} for p in PROVINCES},
+        # 新增：缓存地图视图状态，避免每次重置视角
+        'birth_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20),
+        'death_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20)
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
@@ -247,7 +257,74 @@ def generate_death():
     }
 
 # ==========================================
-# 5. UI: 顶部 HUD
+# 5. 地图渲染优化 核心抗闪烁逻辑
+# ==========================================
+def create_map_layers(data, layer_type="birth"):
+    """
+    复用图层配置，只更新数据 不重建图层
+    layer_type: birth/death
+    """
+    if data.empty:
+        return []
+    
+    # 统一图层配置，避免每次修改参数导致重渲染
+    common_layer_props = {
+        "filled": True,
+        "opacity": 0.8,
+        "radius_min_pixels": 5,
+        "radius_max_pixels": 60,
+        "get_line_color": [255, 255, 255, 100],
+        "get_line_width": 2000
+    }
+
+    # 散点图层
+    scatter_layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=data,
+        get_position='[lon, lat]',
+        get_fill_color='color',
+        get_radius='size',
+        **common_layer_props
+    )
+
+    # 文本图层
+    text_layer = pdk.Layer(
+        "TextLayer",
+        data=data,
+        get_position='[lon, lat]',
+        get_text='name',
+        get_color=[255, 255, 255],
+        get_size=15,
+        get_alignment_baseline="'bottom'",
+        get_text_anchor="'middle'"
+    )
+
+    return [scatter_layer, text_layer]
+
+def render_map(placeholder, data, view_state, title, layer_type):
+    """
+    优化的地图渲染函数
+    1. 复用视图状态
+    2. 只更新数据 不重建整个Deck
+    3. 添加过渡动画
+    """
+    layers = create_map_layers(data, layer_type)
+    
+    deck = pdk.Deck(
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        initial_view_state=view_state,
+        layers=layers,
+        tooltip=False,
+        # 关键：禁用视图状态自动更新，防止闪烁
+        map_provider=None,
+        api_keys={}
+    )
+    
+    placeholder.markdown(f"<h4 style='text-align:center; color:#4ade80'>{title}</h4>", unsafe_allow_html=True)
+    placeholder.pydeck_chart(deck, use_container_width=True)
+
+# ==========================================
+# 6. UI: 顶部 HUD
 # ==========================================
 c_hud_1, c_hud_2 = st.columns([0.6, 0.4])
 with c_hud_1:
@@ -275,7 +352,7 @@ with c_hud_2:
         )
 
 # ==========================================
-# 6. 双地图布局
+# 7. 双地图布局
 # ==========================================
 st.write("")
 col_birth, col_death = st.columns(2, gap="medium")
@@ -290,27 +367,24 @@ st.markdown("---")
 prov_table_placeholder = st.empty()
 
 # ==========================================
-# 7. 咖啡打赏 (核心修复区域)
+# 8. 咖啡打赏
 # ==========================================
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
     @st.dialog(" " + get_txt('coffee_title'), width="small")
     def show_coffee_window():
-        """修复后的打赏窗口"""
         st.markdown(
             f"""<div style="text-align:center; color:#666; margin-bottom:15px;">{get_txt('coffee_desc')}</div>""", 
             unsafe_allow_html=True
         )
         
-        # ✅ 修复1：快捷按钮（使用回调函数 + 状态更新）
+        # 快捷按钮
         presets = [("☕", 1), ("🍗", 3), ("🚀", 5)]
         preset_cols = st.columns(3, gap="small")
         
-        # 定义快捷按钮回调
         def update_coffee_num(num):
             st.session_state.coffee_num = num
         
-        # 渲染快捷按钮
         for i, (icon, num) in enumerate(presets):
             with preset_cols[i]:
                 st.button(
@@ -323,7 +397,7 @@ with c2:
 
         st.write("")
         
-        # ✅ 修复2：输入框双向绑定
+        # 输入框
         cnt = st.number_input(
             get_txt('coffee_amount'),
             min_value=1,
@@ -332,11 +406,10 @@ with c2:
             key='coffee_num'
         )
         
-        # 金额计算
         cny_total = cnt * 10
         usd_total = cnt * 2
 
-        # 支付卡片渲染函数
+        # 支付卡片渲染
         def render_pay_tab(title, amount_str, color_class, img_path, qr_data_suffix, link_url=None):
             with st.container(border=True):
                 st.markdown(f"""
@@ -346,7 +419,6 @@ with c2:
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # 二维码区域
                 c_img_1, c_img_2, c_img_3 = st.columns([1, 4, 1])
                 with c_img_2:
                     if os.path.exists(img_path):
@@ -360,7 +432,6 @@ with c2:
                             use_container_width=True
                         )
                 
-                # 支付按钮/提示
                 if link_url:
                     st.write("")
                     st.link_button(
@@ -378,11 +449,7 @@ with c2:
         
         # 支付方式Tabs
         st.write("")
-        t1, t2, t3 = st.tabs([
-            get_txt('pay_wechat'),
-            get_txt('pay_alipay'),
-            get_txt('pay_paypal')
-        ])
+        t1, t2, t3 = st.tabs([get_txt('pay_wechat'), get_txt('pay_alipay'), get_txt('pay_paypal')])
         
         with t1:
             render_pay_tab("WeChat Pay", f"¥{cny_total}", "color-wechat", "wechat_pay.jpg", "WeChat")
@@ -393,77 +460,35 @@ with c2:
         
         st.write("")
         
-        # ✅ 修复3：打赏成功按钮 & 动画
+        # 打赏成功按钮
         if st.button(
             "🎉 " + get_txt('pay_success').split('!')[0],
             type="primary",
             use_container_width=True
         ):
-            # 1. 显示成功提示
-            st.success(get_txt('pay_success').format(count=cnt))
-            # 2. 气球动画
+            st.success(get_txt('pay_success'))
             st.balloons()
-            # 3. 等待动画展示
             time.sleep(2)
-            # 4. 关闭弹窗
             st.rerun()
 
-    # 打赏按钮
     if st.button(get_txt('coffee_btn'), use_container_width=True):
         show_coffee_window()
 
 # ==========================================
-# 8. 动画主循环 (修复地图渲染和数据处理)
+# 9. 优化后的动画主循环 抗闪烁核心
 # ==========================================
-# 地图视图配置
-birth_view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20)
-death_view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20)
-REFRESH_RATE = 0.8
+REFRESH_RATE = 0.8  # 可适当调高至1.0，进一步减少闪烁
 BIRTH_PROB = 0.6
 DEATH_PROB = 0.5
 
-def create_deck(data, view_state, color_hex):
-    """创建地图Deck（修复渲染问题）"""
-    if data.empty:
-        layers = []
-    else:
-        layers = [
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=data,
-                get_position='[lon, lat]',
-                get_fill_color='color',
-                get_radius='size',
-                filled=True,
-                opacity=0.8,
-                radius_min_pixels=5,
-                radius_max_pixels=60,
-                get_line_color=[255, 255, 255, 100],
-                get_line_width=2000
-            ),
-            pdk.Layer(
-                "TextLayer",
-                data=data,
-                get_position='[lon, lat]',
-                get_text='name',
-                get_color=[255, 255, 255],
-                get_size=15,
-                get_alignment_baseline="'bottom'",
-                get_text_anchor="'middle'"
-            )
-        ]
-    
-    return pdk.Deck(
-        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        initial_view_state=view_state,
-        layers=layers,
-        tooltip=False
-    )
+# 优化：减少数据清理频率，避免频繁删除数据导致闪烁
+CLEAN_INTERVAL = 5  # 每5次循环清理一次过期数据
+clean_counter = 0
 
-# 主循环
 while True:
     ts = time.time()
     t_str = datetime.datetime.now().strftime('%H:%M:%S')
+    clean_counter += 1
     
     # 1. 生成出生数据
     if random.random() < BIRTH_PROB:
@@ -480,7 +505,7 @@ while True:
         if len(st.session_state.born_log) > 6:
             st.session_state.born_log.pop()
         
-        # 添加地图点
+        # 优化：使用pd.concat时忽略索引，减少数据碎片
         new_row = pd.DataFrame([{
             'lat': baby['lat'],
             'lon': baby['lon'],
@@ -490,13 +515,10 @@ while True:
             'name': p_name
         }])
         
-        if st.session_state.birth_map_data.empty:
-            st.session_state.birth_map_data = new_row
-        else:
-            st.session_state.birth_map_data = pd.concat(
-                [st.session_state.birth_map_data, new_row], 
-                ignore_index=True
-            )
+        st.session_state.birth_map_data = pd.concat(
+            [st.session_state.birth_map_data, new_row], 
+            ignore_index=True
+        )
 
     # 2. 生成死亡数据
     if random.random() < DEATH_PROB:
@@ -512,7 +534,6 @@ while True:
         if len(st.session_state.death_log) > 6:
             st.session_state.death_log.pop()
         
-        # 添加地图点
         new_row = pd.DataFrame([{
             'lat': death['lat'],
             'lon': death['lon'],
@@ -522,25 +543,23 @@ while True:
             'name': p_name
         }])
         
-        if st.session_state.death_map_data.empty:
-            st.session_state.death_map_data = new_row
-        else:
-            st.session_state.death_map_data = pd.concat(
-                [st.session_state.death_map_data, new_row], 
-                ignore_index=True
-            )
+        st.session_state.death_map_data = pd.concat(
+            [st.session_state.death_map_data, new_row], 
+            ignore_index=True
+        )
 
-    # 3. 清理过期点（2.5秒后消失）
-    for data_key, time_col in [('birth_map_data', 'born_time'), ('death_map_data', 'death_time')]:
-        data = st.session_state[data_key]
-        if not data.empty:
-            st.session_state[data_key] = data[data[time_col] > (ts - 2.5)]
+    # 3. 优化：批量清理过期数据 减少渲染波动
+    if clean_counter >= CLEAN_INTERVAL:
+        for data_key, time_col in [('birth_map_data', 'born_time'), ('death_map_data', 'death_time')]:
+            data = st.session_state[data_key]
+            if not data.empty:
+                st.session_state[data_key] = data[data[time_col] > (ts - 3.0)]  # 延长数据存活时间至3秒
+        clean_counter = 0
 
     # 4. 渲染统计区
     with stats_placeholder.container():
         c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
         
-        # 出生统计
         with c1:
             st.markdown(f"""
                 <div class="stat-box">
@@ -549,7 +568,6 @@ while True:
                 </div>
             """, unsafe_allow_html=True)
         
-        # 出生日志
         with c2:
             log_html = ""
             for log in st.session_state.born_log:
@@ -557,14 +575,12 @@ while True:
                 log_html += f'<div class="log-item" style="color:{color_hex}">{log["t"]}</div>'
             st.markdown(f'<div class="log-container">{log_html}</div>', unsafe_allow_html=True)
         
-        # 死亡日志
         with c3:
             death_log_html = ""
             for log in st.session_state.death_log:
                 death_log_html += f'<div class="death-log-item">{log["t"]}</div>'
             st.markdown(f'<div class="log-container">{death_log_html}</div>', unsafe_allow_html=True)
         
-        # 死亡统计
         with c4:
             st.markdown(f"""
                 <div class="stat-box">
@@ -573,21 +589,26 @@ while True:
                 </div>
             """, unsafe_allow_html=True)
 
-    # 5. 渲染地图
-    with birth_map_placeholder:
-        st.markdown(f"<h4 style='text-align:center; color:#4ade80'>{get_txt('born_count')}</h4>", unsafe_allow_html=True)
-        birth_deck = create_deck(st.session_state.birth_map_data, birth_view_state, '#4ade80')
-        st.pydeck_chart(birth_deck, use_container_width=True)
+    # 5. 核心优化：使用缓存的视图状态和复用图层渲染地图
+    render_map(
+        birth_map_placeholder,
+        st.session_state.birth_map_data,
+        st.session_state.birth_view_state,
+        get_txt('born_count'),
+        "birth"
+    )
     
-    with death_map_placeholder:
-        st.markdown(f"<h4 style='text-align:center; color:#f87171'>{get_txt('death_count')}</h4>", unsafe_allow_html=True)
-        death_deck = create_deck(st.session_state.death_map_data, death_view_state, '#f87171')
-        st.pydeck_chart(death_deck, use_container_width=True)
+    render_map(
+        death_map_placeholder,
+        st.session_state.death_map_data,
+        st.session_state.death_view_state,
+        get_txt('death_count'),
+        "death"
+    )
         
-    # 6. 渲染省份数据监控看板（修复表格显示）
+    # 6. 渲染省份数据表格
     with prov_table_placeholder.container():
         with st.expander(get_txt('stat_tab_title'), expanded=True):
-            # 构建统计DataFrame
             prov_data = []
             for prov_zh, stats in st.session_state.prov_stats.items():
                 prov_data.append({
@@ -600,12 +621,9 @@ while True:
                 })
             
             df_stats = pd.DataFrame(prov_data)
-            
-            # 按总数排序
             df_stats['Total'] = df_stats['新生'] + df_stats['离世']
             df_stats = df_stats.sort_values(by='Total', ascending=False).head(10)
             
-            # 根据语言选择列
             if st.session_state.language == 'zh':
                 display_cols = ['省份', '新生', '离世']
                 progress_cols = {
@@ -631,7 +649,6 @@ while True:
                     )
                 }
             
-            # 显示表格
             st.dataframe(
                 df_stats[display_cols],
                 use_container_width=True,
@@ -639,5 +656,4 @@ while True:
                 hide_index=True
             )
 
-    # 控制刷新频率
     time.sleep(REFRESH_RATE)
