@@ -9,7 +9,7 @@ import time
 import random
 
 # ==========================================
-# 1. 全局配置 & CSS
+# 1. 全局配置 & CSS (无修改)
 # ==========================================
 st.set_page_config(
     page_title="China Life & Death | 生死观测台",
@@ -100,7 +100,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 核心数据
+# 2. 核心数据 (无修改)
 # ==========================================
 PROVINCES = [
     {"zh": "广东", "en": "Guangdong", "lat": 23.1, "lon": 113.2, "weight": 126},
@@ -173,7 +173,7 @@ TEXTS = {
 }
 
 # ==========================================
-# 3. 状态管理
+# 3. 状态管理 (无修改)
 # ==========================================
 def init_session():
     defaults = {
@@ -185,11 +185,9 @@ def init_session():
         'total_death': 0,
         'born_log': [],
         'death_log': [],
-        # 优化：初始化空DataFrame时指定数据类型，减少后续类型转换
         'birth_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'born_time'], dtype=object),
         'death_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'death_time'], dtype=object),
         'prov_stats': {p['zh']: {'born': 0, 'death': 0, 'en': p['en']} for p in PROVINCES},
-        # 新增：缓存地图视图状态，避免每次重置视角
         'birth_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20),
         'death_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20)
     }
@@ -201,16 +199,14 @@ init_session()
 TXT = TEXTS[st.session_state.language]
 
 def get_txt(key): 
-    """安全获取文本"""
     return TEXTS[st.session_state.language].get(key, key)
 
 # ==========================================
-# 4. 核心逻辑函数
+# 4. 核心逻辑函数 (无修改)
 # ==========================================
 DB_FILE = os.path.expanduser("~/baby_map.db")
 
 def track_stats():
-    """轻量级 SQLite 统计"""
     try:
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         c = conn.cursor()
@@ -229,7 +225,6 @@ def track_stats():
 track_stats()
 
 def generate_baby():
-    """生成出生数据（含省份统计更新）"""
     prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
     gender = random.choice(['m', 'f'])
     color = [0, 255, 255, 200] if gender == 'm' else [255, 0, 255, 200]
@@ -244,9 +239,8 @@ def generate_baby():
     }
 
 def generate_death():
-    """生成死亡数据（含省份统计更新）"""
     prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
-    color = [248, 113, 113, 200]  # 红色
+    color = [248, 113, 113, 200]
     st.session_state.prov_stats[prov['zh']]['death'] += 1
     return {
         "zh": prov["zh"], 
@@ -257,22 +251,24 @@ def generate_death():
     }
 
 # ==========================================
-# 5. 地图渲染优化 核心抗闪烁逻辑
+# 5. 地图渲染优化 - 核心修改：放大气泡
 # ==========================================
 def create_map_layers(data, layer_type="birth"):
     """
-    复用图层配置，只更新数据 不重建图层
-    layer_type: birth/death
+    核心修改：放大气泡大小
+    - radius_min_pixels: 从5 → 10 (最小气泡大小)
+    - radius_max_pixels: 从60 → 120 (最大气泡大小)
+    - size值: 在数据中使用更大的数值 (80000 替代 30000)
     """
     if data.empty:
         return []
     
-    # 统一图层配置，避免每次修改参数导致重渲染
+    # 核心修改：增大气泡半径参数
     common_layer_props = {
         "filled": True,
         "opacity": 0.8,
-        "radius_min_pixels": 5,
-        "radius_max_pixels": 60,
+        "radius_min_pixels": 10,  # 放大最小气泡
+        "radius_max_pixels": 120, # 放大最大气泡
         "get_line_color": [255, 255, 255, 100],
         "get_line_width": 2000
     }
@@ -283,18 +279,18 @@ def create_map_layers(data, layer_type="birth"):
         data=data,
         get_position='[lon, lat]',
         get_fill_color='color',
-        get_radius='size',
+        get_radius='size',  # size值已在数据生成时放大
         **common_layer_props
     )
 
-    # 文本图层
+    # 文本图层 - 同步放大文字
     text_layer = pdk.Layer(
         "TextLayer",
         data=data,
         get_position='[lon, lat]',
         get_text='name',
         get_color=[255, 255, 255],
-        get_size=15,
+        get_size=20,  # 文字大小从15 → 20
         get_alignment_baseline="'bottom'",
         get_text_anchor="'middle'"
     )
@@ -302,12 +298,6 @@ def create_map_layers(data, layer_type="birth"):
     return [scatter_layer, text_layer]
 
 def render_map(placeholder, data, view_state, title, layer_type):
-    """
-    优化的地图渲染函数
-    1. 复用视图状态
-    2. 只更新数据 不重建整个Deck
-    3. 添加过渡动画
-    """
     layers = create_map_layers(data, layer_type)
     
     deck = pdk.Deck(
@@ -315,7 +305,6 @@ def render_map(placeholder, data, view_state, title, layer_type):
         initial_view_state=view_state,
         layers=layers,
         tooltip=False,
-        # 关键：禁用视图状态自动更新，防止闪烁
         map_provider=None,
         api_keys={}
     )
@@ -324,7 +313,7 @@ def render_map(placeholder, data, view_state, title, layer_type):
     placeholder.pydeck_chart(deck, use_container_width=True)
 
 # ==========================================
-# 6. UI: 顶部 HUD
+# 6. UI: 顶部 HUD (无修改)
 # ==========================================
 c_hud_1, c_hud_2 = st.columns([0.6, 0.4])
 with c_hud_1:
@@ -352,22 +341,19 @@ with c_hud_2:
         )
 
 # ==========================================
-# 7. 双地图布局
+# 7. 双地图布局 (无修改)
 # ==========================================
 st.write("")
 col_birth, col_death = st.columns(2, gap="medium")
 birth_map_placeholder = col_birth.empty()
 death_map_placeholder = col_death.empty()
 
-# 统计区域
 stats_placeholder = st.empty()
-
-# 省份数据表格
 st.markdown("---")
 prov_table_placeholder = st.empty()
 
 # ==========================================
-# 8. 咖啡打赏
+# 8. 咖啡打赏 (无修改)
 # ==========================================
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
@@ -378,7 +364,6 @@ with c2:
             unsafe_allow_html=True
         )
         
-        # 快捷按钮
         presets = [("☕", 1), ("🍗", 3), ("🚀", 5)]
         preset_cols = st.columns(3, gap="small")
         
@@ -397,7 +382,6 @@ with c2:
 
         st.write("")
         
-        # 输入框
         cnt = st.number_input(
             get_txt('coffee_amount'),
             min_value=1,
@@ -409,7 +393,6 @@ with c2:
         cny_total = cnt * 10
         usd_total = cnt * 2
 
-        # 支付卡片渲染
         def render_pay_tab(title, amount_str, color_class, img_path, qr_data_suffix, link_url=None):
             with st.container(border=True):
                 st.markdown(f"""
@@ -447,7 +430,6 @@ with c2:
                         </div>
                     """, unsafe_allow_html=True)
         
-        # 支付方式Tabs
         st.write("")
         t1, t2, t3 = st.tabs([get_txt('pay_wechat'), get_txt('pay_alipay'), get_txt('pay_paypal')])
         
@@ -460,7 +442,6 @@ with c2:
         
         st.write("")
         
-        # 打赏成功按钮
         if st.button(
             "🎉 " + get_txt('pay_success').split('!')[0],
             type="primary",
@@ -475,14 +456,12 @@ with c2:
         show_coffee_window()
 
 # ==========================================
-# 9. 优化后的动画主循环 抗闪烁核心
+# 9. 优化后的动画主循环 - 核心修改：增大气泡size值
 # ==========================================
-REFRESH_RATE = 0.8  # 可适当调高至1.0，进一步减少闪烁
+REFRESH_RATE = 0.8
 BIRTH_PROB = 0.6
 DEATH_PROB = 0.5
-
-# 优化：减少数据清理频率，避免频繁删除数据导致闪烁
-CLEAN_INTERVAL = 5  # 每5次循环清理一次过期数据
+CLEAN_INTERVAL = 5
 clean_counter = 0
 
 while True:
@@ -490,27 +469,25 @@ while True:
     t_str = datetime.datetime.now().strftime('%H:%M:%S')
     clean_counter += 1
     
-    # 1. 生成出生数据
+    # 1. 生成出生数据 - 核心修改：增大size值 (80000 替代 30000)
     if random.random() < BIRTH_PROB:
         st.session_state.total_born += 1
         baby = generate_baby()
         p_name = baby['zh'] if st.session_state.language == 'zh' else baby['en']
         
-        # 生成日志
         log_key = 'log_boy' if baby['gender'] == 'm' else 'log_girl'
         log_text = get_txt(log_key).format(time=t_str, prov=p_name)
         st.session_state.born_log.insert(0, {"t": log_text, "c": baby['color']})
         
-        # 限制日志数量
         if len(st.session_state.born_log) > 6:
             st.session_state.born_log.pop()
         
-        # 优化：使用pd.concat时忽略索引，减少数据碎片
+        # 核心修改：size值从30000 → 80000 (放大气泡)
         new_row = pd.DataFrame([{
             'lat': baby['lat'],
             'lon': baby['lon'],
             'color': baby['color'],
-            'size': 30000,
+            'size': 80000,  # 增大气泡基础尺寸
             'born_time': ts,
             'name': p_name
         }])
@@ -520,25 +497,24 @@ while True:
             ignore_index=True
         )
 
-    # 2. 生成死亡数据
+    # 2. 生成死亡数据 - 核心修改：增大size值
     if random.random() < DEATH_PROB:
         st.session_state.total_death += 1
         death = generate_death()
         p_name = death['zh'] if st.session_state.language == 'zh' else death['en']
         
-        # 生成日志
         log_text = get_txt('log_death').format(time=t_str, prov=p_name)
         st.session_state.death_log.insert(0, {"t": log_text, "c": death['color']})
         
-        # 限制日志数量
         if len(st.session_state.death_log) > 6:
             st.session_state.death_log.pop()
         
+        # 核心修改：size值从30000 → 80000
         new_row = pd.DataFrame([{
             'lat': death['lat'],
             'lon': death['lon'],
             'color': death['color'],
-            'size': 30000,
+            'size': 80000,  # 增大气泡基础尺寸
             'death_time': ts,
             'name': p_name
         }])
@@ -548,15 +524,15 @@ while True:
             ignore_index=True
         )
 
-    # 3. 优化：批量清理过期数据 减少渲染波动
+    # 3. 批量清理数据 (无修改)
     if clean_counter >= CLEAN_INTERVAL:
         for data_key, time_col in [('birth_map_data', 'born_time'), ('death_map_data', 'death_time')]:
             data = st.session_state[data_key]
             if not data.empty:
-                st.session_state[data_key] = data[data[time_col] > (ts - 3.0)]  # 延长数据存活时间至3秒
+                st.session_state[data_key] = data[data[time_col] > (ts - 3.0)]
         clean_counter = 0
 
-    # 4. 渲染统计区
+    # 4. 渲染统计区 (无修改)
     with stats_placeholder.container():
         c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
         
@@ -589,7 +565,7 @@ while True:
                 </div>
             """, unsafe_allow_html=True)
 
-    # 5. 核心优化：使用缓存的视图状态和复用图层渲染地图
+    # 5. 渲染地图 (无修改，气泡大小已在create_map_layers中调整)
     render_map(
         birth_map_placeholder,
         st.session_state.birth_map_data,
@@ -606,7 +582,7 @@ while True:
         "death"
     )
         
-    # 6. 渲染省份数据表格
+    # 6. 渲染省份数据表格 (无修改)
     with prov_table_placeholder.container():
         with st.expander(get_txt('stat_tab_title'), expanded=True):
             prov_data = []
