@@ -326,6 +326,14 @@ with c2:
         # 汇率计算逻辑
         cny_total = cnt * 10
         usd_total = cnt * 2
+
+        @st.experimental_memo
+        def calculate_total(coffee_num):
+            return coffee_num * 10
+        
+        usd_total = calculate_total(st.session_state.coffee_num)        
+        cny_total = calculate_total(st.session_state.coffee_num)
+
         
         # 4. 统一支付卡片渲染函数 (核心复用逻辑)
         def render_pay_tab(title, amount_str, color_class, img_path, qr_data_suffix, link_url=None):
