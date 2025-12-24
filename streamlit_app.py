@@ -9,7 +9,7 @@ import time
 import random
 
 # ==========================================
-# 1. 全局配置 & CSS (无修改)
+# 1. 全局配置 & CSS
 # ==========================================
 st.set_page_config(
     page_title="China Life & Death | 生死观测台",
@@ -69,9 +69,6 @@ st.markdown("""
     /* === 咖啡/支付卡片 === */
     .pay-amount-display { font-size: 2rem; font-weight: 800; color: #f87171; margin: 10px 0; }
     .pay-label { font-size: 0.85rem; color: #64748b; font-weight: 600; text-transform: uppercase; }
-    .color-wechat { color: #2AAD67; }
-    .color-alipay { color: #1677ff; }
-    .color-paypal { color: #003087; }
     
     /* === 右上角按钮 === */
     .nav-btn {
@@ -82,25 +79,12 @@ st.markdown("""
     .nav-btn:hover { background: rgba(255,255,255,0.2); color: white; }
     
     /* === 表格样式修正 === */
-    [data-testid="stDataFrame"] { 
-        background: transparent !important; 
-        --background-color: transparent !important;
-    }
-    [data-testid="stExpander"] {
-        background-color: rgba(30, 30, 40, 0.5) !important;
-        border-radius: 8px;
-    }
-
-    /* === 地图容器优化 减少闪烁 === */
-    [data-testid="stDeckGlJsonChart"] {
-        transition: opacity 0.2s ease-in-out !important;
-        opacity: 1 !important;
-    }
+    [data-testid="stDataFrame"] { background: transparent !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 核心数据 (无修改)
+# 2. 核心数据
 # ==========================================
 PROVINCES = [
     {"zh": "广东", "en": "Guangdong", "lat": 23.1, "lon": 113.2, "weight": 126},
@@ -173,7 +157,7 @@ TEXTS = {
 }
 
 # ==========================================
-# 3. 状态管理 (无修改)
+# 3. 状态管理
 # ==========================================
 def init_session():
     defaults = {
@@ -185,28 +169,24 @@ def init_session():
         'total_death': 0,
         'born_log': [],
         'death_log': [],
-        'birth_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'born_time'], dtype=object),
-        'death_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'death_time'], dtype=object),
-        'prov_stats': {p['zh']: {'born': 0, 'death': 0, 'en': p['en']} for p in PROVINCES},
-        'birth_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20),
-        'death_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20)
+        'birth_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'born_time']),
+        'death_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'death_time']),
+        'prov_stats': {p['zh']: {'born': 0, 'death': 0} for p in PROVINCES}
     }
     for k, v in defaults.items():
-        if k not in st.session_state: 
-            st.session_state[k] = v
+        if k not in st.session_state: st.session_state[k] = v
 
 init_session()
 TXT = TEXTS[st.session_state.language]
-
-def get_txt(key): 
-    return TEXTS[st.session_state.language].get(key, key)
+def get_txt(key): return TEXTS[st.session_state.language][key]
 
 # ==========================================
-# 4. 核心逻辑函数 (无修改)
+# 4. 核心逻辑函数
 # ==========================================
 DB_FILE = os.path.expanduser("~/baby_map.db")
 
 def track_stats():
+    """轻量级 SQLite 统计"""
     try:
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         c = conn.cursor()
@@ -218,9 +198,7 @@ def track_stats():
             conn.commit()
             st.session_state.has_counted = True
         conn.close()
-    except Exception as e:
-        print(f"统计数据库错误: {e}")
-        pass
+    except: pass
 
 track_stats()
 
@@ -229,91 +207,16 @@ def generate_baby():
     gender = random.choice(['m', 'f'])
     color = [0, 255, 255, 200] if gender == 'm' else [255, 0, 255, 200]
     st.session_state.prov_stats[prov['zh']]['born'] += 1
-    return {
-        "zh": prov["zh"], 
-        "en": prov["en"], 
-        "gender": gender, 
-        "lat": prov['lat'], 
-        "lon": prov['lon'], 
-        "color": color
-    }
+    return {"zh": prov["zh"], "en": prov["en"], "gender": gender, "lat": prov['lat'], "lon": prov['lon'], "color": color}
 
 def generate_death():
     prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
-    color = [248, 113, 113, 200]
+    color = [248, 113, 113, 200] # Red
     st.session_state.prov_stats[prov['zh']]['death'] += 1
-    return {
-        "zh": prov["zh"], 
-        "en": prov["en"], 
-        "lat": prov['lat'], 
-        "lon": prov['lon'], 
-        "color": color
-    }
+    return {"zh": prov["zh"], "en": prov["en"], "lat": prov['lat'], "lon": prov['lon'], "color": color}
 
 # ==========================================
-# 5. 地图渲染优化 - 核心修改：放大气泡
-# ==========================================
-def create_map_layers(data, layer_type="birth"):
-    """
-    核心修改：放大气泡大小
-    - radius_min_pixels: 从5 → 10 (最小气泡大小)
-    - radius_max_pixels: 从60 → 120 (最大气泡大小)
-    - size值: 在数据中使用更大的数值 (80000 替代 30000)
-    """
-    if data.empty:
-        return []
-    
-    # 核心修改：增大气泡半径参数
-    common_layer_props = {
-        "filled": True,
-        "opacity": 0.8,
-        "radius_min_pixels": 10,  # 放大最小气泡
-        "radius_max_pixels": 120, # 放大最大气泡
-        "get_line_color": [255, 255, 255, 100],
-        "get_line_width": 2000
-    }
-
-    # 散点图层
-    scatter_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=data,
-        get_position='[lon, lat]',
-        get_fill_color='color',
-        get_radius='size',  # size值已在数据生成时放大
-        **common_layer_props
-    )
-
-    # 文本图层 - 同步放大文字
-    text_layer = pdk.Layer(
-        "TextLayer",
-        data=data,
-        get_position='[lon, lat]',
-        get_text='name',
-        get_color=[255, 255, 255],
-        get_size=20,  # 文字大小从15 → 20
-        get_alignment_baseline="'bottom'",
-        get_text_anchor="'middle'"
-    )
-
-    return [scatter_layer, text_layer]
-
-def render_map(placeholder, data, view_state, title, layer_type):
-    layers = create_map_layers(data, layer_type)
-    
-    deck = pdk.Deck(
-        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        initial_view_state=view_state,
-        layers=layers,
-        tooltip=False,
-        map_provider=None,
-        api_keys={}
-    )
-    
-    placeholder.markdown(f"<h4 style='text-align:center; color:#4ade80'>{title}</h4>", unsafe_allow_html=True)
-    placeholder.pydeck_chart(deck, use_container_width=True)
-
-# ==========================================
-# 6. UI: 顶部 HUD (无修改)
+# 5. UI: 顶部 HUD
 # ==========================================
 c_hud_1, c_hud_2 = st.columns([0.6, 0.4])
 with c_hud_1:
@@ -335,300 +238,183 @@ with c_hud_2:
             st.session_state.language = 'en' if st.session_state.language == 'zh' else 'zh'
             st.rerun()
     with cols[2]:
-        st.markdown(
-            f'<a href="https://laodeng.streamlit.app" target="_blank" class="nav-btn" style="text-align:center; width:100%; padding: 8px 0;">{TXT["more_app"]} ↗</a>', 
-            unsafe_allow_html=True
-        )
+        st.markdown(f'<a href="https://laodeng.streamlit.app" target="_blank" class="nav-btn" style="text-align:center; width:100%; padding: 8px 0;">{TXT["more_app"]} ↗</a>', unsafe_allow_html=True)
 
 # ==========================================
-# 7. 双地图布局 (无修改)
+# 6. 双地图布局
 # ==========================================
 st.write("")
 col_birth, col_death = st.columns(2, gap="medium")
 birth_map_placeholder = col_birth.empty()
 death_map_placeholder = col_death.empty()
 
+# 统计区域
 stats_placeholder = st.empty()
+
+# 省份数据表格
 st.markdown("---")
 prov_table_placeholder = st.empty()
 
+
 # ==========================================
-# 8. 咖啡打赏 (无修改)
+# 7. 咖啡打赏 (核心修复区域)
 # ==========================================
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
     @st.dialog(" " + get_txt('coffee_title'), width="small")
     def show_coffee_window():
-        st.markdown(
-            f"""<div style="text-align:center; color:#666; margin-bottom:15px;">{get_txt('coffee_desc')}</div>""", 
-            unsafe_allow_html=True
-        )
+        st.markdown(f"""<div style="text-align:center; color:#666; margin-bottom:15px;">{get_txt('coffee_desc')}</div>""", unsafe_allow_html=True)
         
+        # --- 修复 1：快捷按钮 ---
+        # 逻辑：点击后直接修改 Session State 并 Rerun，强制刷新下方 Input 框的值
         presets = [("☕", 1), ("🍗", 3), ("🚀", 5)]
-        preset_cols = st.columns(3, gap="small")
-        
-        def update_coffee_num(num):
-            st.session_state.coffee_num = num
-        
+        cols = st.columns(3, gap="small")
         for i, (icon, num) in enumerate(presets):
-            with preset_cols[i]:
-                st.button(
-                    f"{icon} {num}",
-                    use_container_width=True,
-                    key=f"preset_btn_{num}",
-                    on_click=update_coffee_num,
-                    args=(num,)
-                )
+            with cols[i]:
+                if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
+                    st.session_state.coffee_num = num
+                    st.rerun()
 
         st.write("")
-        
-        cnt = st.number_input(
-            get_txt('coffee_amount'),
-            min_value=1,
-            max_value=100,
-            step=1,
-            key='coffee_num'
-        )
+        # Input 绑定 Session State，确保双向同步
+        cnt = st.number_input(get_txt('coffee_amount'), 1, 100, step=1, key='coffee_num')
         
         cny_total = cnt * 10
         usd_total = cnt * 2
 
         def render_pay_tab(title, amount_str, color_class, img_path, qr_data_suffix, link_url=None):
             with st.container(border=True):
-                st.markdown(f"""
-                    <div style="text-align: center;">
-                        <div class="pay-label {color_class}">{title}</div>
-                        <div class="pay-amount-display {color_class}">{amount_str}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                
+                st.markdown(f"""<div style="text-align: center;"><div class="pay-amount-display {color_class}">{amount_str}</div></div>""", unsafe_allow_html=True)
                 c_img_1, c_img_2, c_img_3 = st.columns([1, 4, 1])
                 with c_img_2:
-                    if os.path.exists(img_path):
-                        st.image(img_path, use_container_width=True)
-                    else:
+                    if os.path.exists(img_path): st.image(img_path, use_container_width=True)
+                    else: 
                         qr_data = f"Donate_{cny_total}_{qr_data_suffix}"
-                        if link_url:
-                            qr_data = link_url
-                        st.image(
-                            f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={qr_data}",
-                            use_container_width=True
-                        )
-                
+                        if link_url: qr_data = link_url
+                        st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={qr_data}", use_container_width=True)
                 if link_url:
                     st.write("")
-                    st.link_button(
-                        f"👉 Pay {amount_str}",
-                        link_url,
-                        type="primary",
-                        use_container_width=True
-                    )
+                    st.link_button(f"👉 Pay {amount_str}", link_url, type="primary", use_container_width=True)
                 else:
-                    st.markdown("""
-                        <div style="text-align: center; font-size: 0.8rem; color:#888; margin-top: 10px;">
-                            扫描二维码支持
-                        </div>
-                    """, unsafe_allow_html=True)
-        
+                    st.markdown(f"""<div style="text-align: center; font-size: 0.8rem; color:#888;">扫描二维码支持</div>""", unsafe_allow_html=True)
+                    
         st.write("")
         t1, t2, t3 = st.tabs([get_txt('pay_wechat'), get_txt('pay_alipay'), get_txt('pay_paypal')])
-        
-        with t1:
-            render_pay_tab("WeChat Pay", f"¥{cny_total}", "color-wechat", "wechat_pay.jpg", "WeChat")
-        with t2:
-            render_pay_tab("Alipay", f"¥{cny_total}", "color-alipay", "ali_pay.jpg", "Alipay")
-        with t3:
-            render_pay_tab("PayPal", f"${usd_total}", "color-paypal", "paypal.png", "PayPal", "https://paypal.me/ytqz")
+        with t1: render_pay_tab("WeChat Pay", f"¥{cny_total}", "color-wechat", "wechat_pay.jpg", "WeChat")
+        with t2: render_pay_tab("Alipay", f"¥{cny_total}", "color-alipay", "ali_pay.jpg", "Alipay")
+        with t3: render_pay_tab("PayPal", f"${usd_total}", "color-paypal", "paypal.png", "PayPal", "https://paypal.me/ytqz")
         
         st.write("")
         
-        if st.button(
-            "🎉 " + get_txt('pay_success').split('!')[0],
-            type="primary",
-            use_container_width=True
-        ):
-            st.success(get_txt('pay_success'))
+        # --- 修复 2：打赏动画按钮 ---
+        # 逻辑：点击 -> 吐司提示 -> 气球动画 -> 睡眠展示 -> 关闭弹窗(Rerun)
+        if st.button("🎉 " + get_txt('pay_success').split('!')[0], type="primary", use_container_width=True):
+            # 1. 顶部弹出 Toast，提示会持久化一点
+            st.toast(get_txt('pay_success').format(count=cnt), icon="❤️")
+            # 2. 页面飘气球
             st.balloons()
-            time.sleep(2)
+            # 3. 等待足够时间让用户看到动画 (在 dialog 关闭前)
+            time.sleep(2.0)
+            # 4. 刷新页面（同时也关闭了 dialog）
             st.rerun()
 
     if st.button(get_txt('coffee_btn'), use_container_width=True):
         show_coffee_window()
 
 # ==========================================
-# 9. 优化后的动画主循环 - 核心修改：增大气泡size值
+# 8. 动画主循环
 # ==========================================
+birth_view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20)
+death_view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20)
 REFRESH_RATE = 0.8
 BIRTH_PROB = 0.6
 DEATH_PROB = 0.5
-CLEAN_INTERVAL = 5
-clean_counter = 0
 
 while True:
     ts = time.time()
     t_str = datetime.datetime.now().strftime('%H:%M:%S')
-    clean_counter += 1
     
-    # 1. 生成出生数据 - 核心修改：增大size值 (80000 替代 30000)
+    # 1. 生成出生数据
     if random.random() < BIRTH_PROB:
         st.session_state.total_born += 1
         baby = generate_baby()
         p_name = baby['zh'] if st.session_state.language == 'zh' else baby['en']
         
-        log_key = 'log_boy' if baby['gender'] == 'm' else 'log_girl'
-        log_text = get_txt(log_key).format(time=t_str, prov=p_name)
-        st.session_state.born_log.insert(0, {"t": log_text, "c": baby['color']})
+        key = 'log_boy' if baby['gender']=='m' else 'log_girl'
+        st.session_state.born_log.insert(0, {"t": TXT[key].format(time=t_str, prov=p_name), "c": baby['color']})
+        if len(st.session_state.born_log) > 6: st.session_state.born_log.pop()
         
-        if len(st.session_state.born_log) > 6:
-            st.session_state.born_log.pop()
-        
-        # 核心修改：size值从30000 → 80000 (放大气泡)
-        new_row = pd.DataFrame([{
-            'lat': baby['lat'],
-            'lon': baby['lon'],
-            'color': baby['color'],
-            'size': 80000,  # 增大气泡基础尺寸
-            'born_time': ts,
-            'name': p_name
-        }])
-        
-        st.session_state.birth_map_data = pd.concat(
-            [st.session_state.birth_map_data, new_row], 
-            ignore_index=True
-        )
+        new_row = pd.DataFrame([{'lat': baby['lat'], 'lon': baby['lon'], 'color': baby['color'], 'size': 30000, 'born_time': ts, 'name': p_name}])
+        if st.session_state.birth_map_data.empty: st.session_state.birth_map_data = new_row
+        else: st.session_state.birth_map_data = pd.concat([st.session_state.birth_map_data, new_row], ignore_index=True)
 
-    # 2. 生成死亡数据 - 核心修改：增大size值
+    # 2. 生成死亡数据
     if random.random() < DEATH_PROB:
         st.session_state.total_death += 1
         death = generate_death()
         p_name = death['zh'] if st.session_state.language == 'zh' else death['en']
         
-        log_text = get_txt('log_death').format(time=t_str, prov=p_name)
-        st.session_state.death_log.insert(0, {"t": log_text, "c": death['color']})
+        st.session_state.death_log.insert(0, {"t": TXT['log_death'].format(time=t_str, prov=p_name), "c": death['color']})
+        if len(st.session_state.death_log) > 6: st.session_state.death_log.pop()
         
-        if len(st.session_state.death_log) > 6:
-            st.session_state.death_log.pop()
-        
-        # 核心修改：size值从30000 → 80000
-        new_row = pd.DataFrame([{
-            'lat': death['lat'],
-            'lon': death['lon'],
-            'color': death['color'],
-            'size': 80000,  # 增大气泡基础尺寸
-            'death_time': ts,
-            'name': p_name
-        }])
-        
-        st.session_state.death_map_data = pd.concat(
-            [st.session_state.death_map_data, new_row], 
-            ignore_index=True
-        )
+        new_row = pd.DataFrame([{'lat': death['lat'], 'lon': death['lon'], 'color': death['color'], 'size': 30000, 'death_time': ts, 'name': p_name}])
+        if st.session_state.death_map_data.empty: st.session_state.death_map_data = new_row
+        else: st.session_state.death_map_data = pd.concat([st.session_state.death_map_data, new_row], ignore_index=True)
 
-    # 3. 批量清理数据 (无修改)
-    if clean_counter >= CLEAN_INTERVAL:
-        for data_key, time_col in [('birth_map_data', 'born_time'), ('death_map_data', 'death_time')]:
-            data = st.session_state[data_key]
-            if not data.empty:
-                st.session_state[data_key] = data[data[time_col] > (ts - 3.0)]
-        clean_counter = 0
+    # 3. 清理过期点
+    for k, time_col in [('birth_map_data', 'born_time'), ('death_map_data', 'death_time')]:
+        if not st.session_state[k].empty:
+            st.session_state[k] = st.session_state[k][st.session_state[k][time_col] > (ts - 2.5)]
 
-    # 4. 渲染统计区 (无修改)
+    # 4. 渲染统计区
     with stats_placeholder.container():
         c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
-        
-        with c1:
-            st.markdown(f"""
-                <div class="stat-box">
-                    <div class="stat-val">{st.session_state.total_born}</div>
-                    <div class="stat-label">{get_txt('born_count')}</div>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        with c2:
-            log_html = ""
-            for log in st.session_state.born_log:
-                color_hex = "#22d3ee" if log['c'][0] == 0 else "#e879f9"
-                log_html += f'<div class="log-item" style="color:{color_hex}">{log["t"]}</div>'
-            st.markdown(f'<div class="log-container">{log_html}</div>', unsafe_allow_html=True)
-        
+        with c1: st.markdown(f'<div class="stat-box"><div class="stat-val">{st.session_state.total_born}</div><div class="stat-label">{TXT["born_count"]}</div></div>', unsafe_allow_html=True)
+        with c2: 
+            h = "".join([f'<div class="log-item" style="color:{"#22d3ee" if l["c"][0]==0 else "#e879f9"}">{l["t"]}</div>' for l in st.session_state.born_log])
+            st.markdown(f'<div class="log-container">{h}</div>', unsafe_allow_html=True)
         with c3:
-            death_log_html = ""
-            for log in st.session_state.death_log:
-                death_log_html += f'<div class="death-log-item">{log["t"]}</div>'
-            st.markdown(f'<div class="log-container">{death_log_html}</div>', unsafe_allow_html=True)
-        
-        with c4:
-            st.markdown(f"""
-                <div class="stat-box">
-                    <div class="stat-death-val">{st.session_state.total_death}</div>
-                    <div class="stat-label">{get_txt('death_count')}</div>
-                </div>
-            """, unsafe_allow_html=True)
+            h = "".join([f'<div class="death-log-item">{l["t"]}</div>' for l in st.session_state.death_log])
+            st.markdown(f'<div class="log-container">{h}</div>', unsafe_allow_html=True)
+        with c4: st.markdown(f'<div class="stat-box"><div class="stat-death-val">{st.session_state.total_death}</div><div class="stat-label">{TXT["death_count"]}</div></div>', unsafe_allow_html=True)
 
-    # 5. 渲染地图 (无修改，气泡大小已在create_map_layers中调整)
-    render_map(
-        birth_map_placeholder,
-        st.session_state.birth_map_data,
-        st.session_state.birth_view_state,
-        get_txt('born_count'),
-        "birth"
-    )
+    # 5. 渲染地图
+    def get_deck(data, t_col, color_hex):
+        return pdk.Deck(
+            map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+            initial_view_state=birth_view_state,
+            layers=[
+                pdk.Layer("ScatterplotLayer", data, get_position='[lon, lat]', get_fill_color='color', get_radius='size', filled=True, radius_min_pixels=5, radius_max_pixels=60),
+                pdk.Layer("TextLayer", data, get_position='[lon, lat]', get_text='name', get_color=[255,255,255], get_size=15, get_alignment_baseline="'bottom'")
+            ]
+        )
     
-    render_map(
-        death_map_placeholder,
-        st.session_state.death_map_data,
-        st.session_state.death_view_state,
-        get_txt('death_count'),
-        "death"
-    )
+    with birth_map_placeholder:
+        st.markdown(f"<h4 style='text-align:center; color:#4ade80'>{TXT['born_count']}</h4>", unsafe_allow_html=True)
+        st.pydeck_chart(get_deck(st.session_state.birth_map_data, 'born_time', '#4ade80'), use_container_width=True)
+    
+    with death_map_placeholder:
+        st.markdown(f"<h4 style='text-align:center; color:#f87171'>{TXT['death_count']}</h4>", unsafe_allow_html=True)
+        st.pydeck_chart(get_deck(st.session_state.death_map_data, 'death_time', '#f87171'), use_container_width=True)
         
-    # 6. 渲染省份数据表格 (无修改)
+    # 6. 渲染各省数据监控看板
     with prov_table_placeholder.container():
-        with st.expander(get_txt('stat_tab_title'), expanded=True):
-            prov_data = []
-            for prov_zh, stats in st.session_state.prov_stats.items():
-                prov_data.append({
-                    '省份': prov_zh,
-                    'Province': stats['en'],
-                    '新生': stats['born'],
-                    'Born': stats['born'],
-                    '离世': stats['death'],
-                    'Deaths': stats['death']
-                })
+        with st.expander(TXT['stat_tab_title'], expanded=True):
+            df_stats = pd.DataFrame.from_dict(st.session_state.prov_stats, orient='index')
+            df_stats = df_stats.reset_index().rename(columns={'index': '省份', 'born': '新生', 'death': '离世'})
+            if st.session_state.language == 'en':
+                df_stats = df_stats.rename(columns={'省份': 'Province', '新生': 'Born', '离世': 'Deaths'})
             
-            df_stats = pd.DataFrame(prov_data)
-            df_stats['Total'] = df_stats['新生'] + df_stats['离世']
+            df_stats['Total'] = df_stats.iloc[:, 1] + df_stats.iloc[:, 2]
             df_stats = df_stats.sort_values(by='Total', ascending=False).head(10)
             
-            if st.session_state.language == 'zh':
-                display_cols = ['省份', '新生', '离世']
-                progress_cols = {
-                    "新生": st.column_config.ProgressColumn(
-                        "新生", format="%d", 
-                        min_value=0, max_value=max(df_stats['新生'].max(), 10)
-                    ),
-                    "离世": st.column_config.ProgressColumn(
-                        "离世", format="%d",
-                        min_value=0, max_value=max(df_stats['离世'].max(), 10)
-                    )
-                }
-            else:
-                display_cols = ['Province', 'Born', 'Deaths']
-                progress_cols = {
-                    "Born": st.column_config.ProgressColumn(
-                        "Born", format="%d",
-                        min_value=0, max_value=max(df_stats['Born'].max(), 10)
-                    ),
-                    "Deaths": st.column_config.ProgressColumn(
-                        "Deaths", format="%d",
-                        min_value=0, max_value=max(df_stats['Deaths'].max(), 10)
-                    )
-                }
-            
             st.dataframe(
-                df_stats[display_cols],
+                df_stats[['省份', '新生', '离世'] if st.session_state.language == 'zh' else ['Province', 'Born', 'Deaths']],
                 use_container_width=True,
-                column_config=progress_cols,
+                column_config={
+                    "新生": st.column_config.ProgressColumn("新生 (Born)", format="%d", min_value=0, max_value=max(df_stats.iloc[:, 1].max(), 10)),
+                    "离世": st.column_config.ProgressColumn("离世 (Deaths)", format="%d", min_value=0, max_value=max(df_stats.iloc[:, 2].max(), 10)),
+                },
                 hide_index=True
             )
 
