@@ -204,9 +204,6 @@ def init_session():
 
 init_session()
 TXT = TEXTS[st.session_state.language]
-
-if 'coffee_num' not in st.session_state:
-    st.session_state.coffee_num = 1
     
 # ==========================================
 # 4. 核心逻辑函数
@@ -288,11 +285,13 @@ with c_hud_2:
 map_placeholder = st.empty()
 stats_placeholder = st.empty()
 
-# 底部打赏区
-st.markdown("---")
+
+# ==========================================
+# 8. 新版咖啡打赏逻辑 (替换旧版)
+# ==========================================
 
 def get_txt(key): 
-    return TEXTS[st.session_state.language][key]
+    return lang_texts[st.session_state.language][key]
 
 st.markdown("<br><br>", unsafe_allow_html=True)    
 c1, c2, c3 = st.columns([1, 2, 1])
@@ -312,7 +311,7 @@ with c2:
             with cols[i]:
                 # 点击快捷键直接修改 session_state
                 if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
-                    set_val(num)            
+                    set_val(num)
         st.write("")
 
         # 3. 自定义输入与金额计算
@@ -385,10 +384,11 @@ with c2:
             time.sleep(1.5)
             st.rerun()
 
-
     # 主界面触发按钮
     if st.button(get_txt('coffee_btn'), use_container_width=True):
         show_coffee_window()
+
+
         
 # ==========================================
 # 8. 动画主循环
