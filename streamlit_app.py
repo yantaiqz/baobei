@@ -253,38 +253,6 @@ with c_hud_2:
     with cols[2]:
         st.markdown(f'<a href="https://neal.fun" target="_blank" class="nav-btn" style="text-align:center; width:100%; padding: 8px 0;">{TXT["more_app"]} ↗</a>', unsafe_allow_html=True)
 
-# ==========================================
-# 6. 权限锁 (Lock Screen)
-# ==========================================
-FREE_SECONDS = 600
-UNLOCK_CODE = "vip888"
-
-if st.session_state.access_status == 'free':
-    elapsed = (datetime.datetime.now() - st.session_state.start_time).total_seconds()
-    if elapsed > FREE_SECONDS:
-        st.session_state.access_status = 'locked'
-        st.rerun()
-
-if st.session_state.access_status == 'locked':
-    st.error(TXT['lock_title'])
-    st.markdown(f"""
-    <div style="text-align:center; padding:40px; background:#111; border-radius:10px; border:1px solid #333;">
-        <h2>🔒 {TXT['lock_title']}</h2>
-        <p style="color:#888;">{TXT['lock_msg']}</p>
-        <code style="display:inline-block; margin:10px 0; padding:5px 10px; background:#222; border-radius:4px; color:#4ade80;">Code: {UNLOCK_CODE}</code>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    with st.form("unlock"):
-        c1, c2 = st.columns([3, 1])
-        with c1: code = st.text_input("Code", type="password", label_visibility="collapsed")
-        with c2: 
-            if st.form_submit_button(TXT['unlock_btn'], use_container_width=True):
-                if code == UNLOCK_CODE:
-                    st.session_state.access_status = 'unlocked'
-                    st.rerun()
-                else: st.error("Error")
-    st.stop()
 
 # ==========================================
 # 7. 主界面 (地图 + 统计)
