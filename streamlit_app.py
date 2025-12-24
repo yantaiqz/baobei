@@ -4,6 +4,7 @@ import pandas as pd
 import time
 import random
 import datetime
+import uuid
 
 # ==========================================
 # 1. 基础配置
@@ -52,21 +53,12 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 2px;
     }
-    
-    /* 最新出生列表 */
-    .recent-born {
-        font-family: 'Courier New', monospace;
-        color: #00ff00;
-        font-size: 0.9rem;
-        margin-top: 5px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 地理数据 (主要中国城市坐标与人口权重模拟)
+# 2. 地理数据
 # ==========================================
-# 权重(weight)基于大致人口规模，用于模拟出生概率
 CITIES = [
     {"name": "北京", "lat": 39.9042, "lon": 116.4074, "weight": 21},
     {"name": "上海", "lat": 31.2304, "lon": 121.4737, "weight": 24},
@@ -91,7 +83,6 @@ CITIES = [
     {"name": "海口", "lat": 20.0174, "lon": 110.3492, "weight": 3},
 ]
 
-# 扁平化用于随机选择
 CITY_CHOICES = []
 CITY_WEIGHTS = []
 for c in CITIES:
@@ -104,7 +95,7 @@ for c in CITIES:
 if 'total_born' not in st.session_state:
     st.session_state.total_born = 0
 if 'born_log' not in st.session_state:
-    st.session_state.born_log = [] # 存储最近出生的宝宝
+    st.session_state.born_log = [] 
 if 'map_data' not in st.session_state:
     st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name'])
 
@@ -112,11 +103,10 @@ if 'map_data' not in st.session_state:
 # 4. 辅助函数
 # ==========================================
 def generate_baby():
-    """生成一个新宝宝的数据"""
     city = random.choices(CITY_CHOICES, weights=CITY_WEIGHTS, k=1)[0]
     gender = random.choice(['男孩', '女孩'])
-    # 颜色: 男孩蓝色，女孩粉色 (RGB)
-    color = [0, 150, 255, 200] if gender == '男孩' else [255, 105, 180, 200]
+    # 颜色: 男孩青色，女孩粉色 (RGB)
+    color = [0, 255, 255, 255] if gender == '男孩' else [255, 105, 180, 255]
     
     return {
         "city": city['name'],
@@ -128,51 +118,39 @@ def generate_baby():
         "id": str(uuid.uuid4())
     }
 
-import uuid
-
 # ==========================================
 # 5. 页面布局
 # ==========================================
-
-# 顶部标题区
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
     st.markdown("<h1 style='text-align: center; color: white;'>👶 中国宝宝地图</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #666;'>数据基于概率模拟演示 | 实时展示新生命诞生</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #888; font-size: 0.8rem;'>演示数据：模拟实时出生概率</p>", unsafe_allow_html=True)
 
-# 占位符：用于后续循环刷新
+# 占位符
 map_container = st.empty()
 stats_container = st.empty()
 
 # ==========================================
 # 6. 动画主循环
 # ==========================================
-
-# 设置刷新率 (秒)
 REFRESH_RATE = 0.5 
-# 出生概率 (每次刷新尝试生成的概率，调整此值改变"出生速度")
-# 中国年出生人口约900万 -> 每天约2.4万 -> 每分钟约17人 -> 每3-4秒1人
-# 为了演示效果，我们稍微加速，设置为约1秒1个
-BIRTH_PROBABILITY = 0.4 
+BIRTH_PROBABILITY = 0.5
 
-# Pydeck 初始视图状态
 view_state = pdk.ViewState(
-    latitude=34.0,
-    longitude=108.0,
-    zoom=3.5,
+    latitude=35.0,
+    longitude=105.0,
+    zoom=3,
     pitch=0,
 )
 
 while True:
     current_time = time.time()
     
-    # --- 1. 生成逻辑 ---
-    # 每次循环有一定概率出生新宝宝
+    # 1. 生成
     if random.random() < BIRTH_PROBABILITY:
         new_baby = generate_baby()
         st.session_state.total_born += 1
         
-        # 添加到日志
         log_entry = {
             "text": f"{datetime.datetime.now().strftime('%H:%M:%S')} - {new_baby['city']} 迎来了一位{new_baby['gender']}",
             "color": "#40E0D0" if new_baby['gender'] == '男孩' else "#FF69B4"
@@ -181,12 +159,11 @@ while True:
         if len(st.session_state.born_log) > 5:
             st.session_state.born_log.pop()
             
-        # 添加到地图数据
         new_row = pd.DataFrame([{
             'lat': new_baby['lat'],
             'lon': new_baby['lon'],
             'color': new_baby['color'],
-            'size': 20000, # 初始大小
+            'size': 20000, 
             'born_time': current_time,
             'name': new_baby['city']
         }])
@@ -196,37 +173,30 @@ while True:
         else:
             st.session_state.map_data = pd.concat([st.session_state.map_data, new_row], ignore_index=True)
 
-    # --- 2. 清理逻辑 ---
-    # 移除超过 3 秒的地图点 (模拟闪烁消失效果)
+    # 2. 清理 (移除超过3秒的数据)
     if not st.session_state.map_data.empty:
         st.session_state.map_data = st.session_state.map_data[
             st.session_state.map_data['born_time'] > (current_time - 3.0)
         ]
 
-    # --- 3. 渲染 UI ---
-    
-    # A. 渲染统计区
+    # 3. 渲染 UI
     with stats_container.container():
         sc1, sc2, sc3 = st.columns([1, 1, 1])
-        
-        # 左侧：总数
         with sc2:
             st.markdown(f"""
             <div class="metric-card">
-                <div class="label">本页面见证的新生命</div>
+                <div class="label">本场见证的新生命</div>
                 <div class="big-number">{st.session_state.total_born}</div>
             </div>
             """, unsafe_allow_html=True)
         
-        # 底部：最新记录
         log_html = ""
         for log in st.session_state.born_log:
-            log_html += f"<div style='text-align:center; color:{log['color']}; margin-bottom:4px; font-size:14px;'>{log['text']}</div>"
+            log_html += f"<div style='text-align:center; color:{log['color']}; margin-bottom:4px; font-size:14px; font-family: monospace;'>{log['text']}</div>"
         
         st.markdown(f"<div style='height: 100px; overflow:hidden;'>{log_html}</div>", unsafe_allow_html=True)
 
-    # B. 渲染地图
-    # 使用 Pydeck 散点图
+    # 4. 渲染地图 (修复版：使用 CartoDB)
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=st.session_state.map_data,
@@ -234,37 +204,33 @@ while True:
         get_color='color',
         get_radius='size',
         pickable=True,
-        opacity=0.8,
-        stroked=True,
+        opacity=0.9,
         filled=True,
         radius_scale=6,
         radius_min_pixels=5,
-        radius_max_pixels=50,
-        get_line_color=[255, 255, 255],
-        get_line_width=2000,
+        radius_max_pixels=40,
     )
 
-    # 简单的文字层
     text_layer = pdk.Layer(
         "TextLayer",
         data=st.session_state.map_data,
         get_position='[lon, lat]',
         get_text='name',
         get_color=[255, 255, 255],
-        get_size=16,
+        get_size=14,
         get_alignment_baseline="'bottom'",
         get_text_anchor="'middle'"
     )
 
     r = pdk.Deck(
-        map_style="mapbox://styles/mapbox/dark-v10", # 黑色地图风格
+        # 核心修改：使用 CartoDB Dark Matter 样式，无需 Token
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         layers=[layer, text_layer],
         initial_view_state=view_state,
-        tooltip={"html": "<b>{name}</b>", "style": {"color": "white"}}
+        tooltip={"html": "<b>{name}</b>"}
     )
     
     with map_container:
         st.pydeck_chart(r, use_container_width=True)
 
-    # --- 4. 循环控制 ---
     time.sleep(REFRESH_RATE)
