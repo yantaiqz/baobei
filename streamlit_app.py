@@ -43,6 +43,7 @@ st.markdown("""
     /* === 统计数字样式 === */
     .stat-box { text-align: center; padding: 0 20px; }
     .stat-val { font-size: 1.8rem; font-weight: 700; color: #4ade80; font-family: 'Courier New', monospace; }
+    .stat-death-val { font-size: 1.8rem; font-weight: 700; color: #f87171; font-family: 'Courier New', monospace; }
     .stat-label { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-top: -5px; }
 
     /* === 实时日志样式 === */
@@ -54,6 +55,12 @@ st.markdown("""
     .log-item {
         font-family: 'JetBrains Mono', 'Courier New', monospace;
         font-size: 0.85rem; margin-bottom: 6px;
+        text-shadow: 0 0 5px rgba(0,0,0,0.5);
+    }
+    .death-log-item {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 0.85rem; margin-bottom: 6px;
+        color: #f87171;
         text-shadow: 0 0 5px rgba(0,0,0,0.5);
     }
 
@@ -75,6 +82,29 @@ st.markdown("""
     
     /* Streamlit 元素微调 */
     [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+    
+    /* 支付卡片样式 */
+    .pay-label {
+        font-size: 0.85rem;
+        color: #64748b;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .pay-amount-display {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.8rem;
+        font-weight: 800;
+    }
+    .color-wechat { color: #2AAD67; }
+    .color-alipay { color: #1677ff; }
+    .color-paypal { color: #003087; }
+    .pay-instruction {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-top: 15px;
+        margin-bottom: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -120,13 +150,15 @@ PROV_WEIGHTS = [p['weight'] for p in PROVINCES]
 
 TEXTS = {
     'zh': {
-        'title': '中国宝宝地图',
-        'subtitle': '实时模拟数据 | 基于各省人口权重',
+        'title': '中国人口动态地图',
+        'subtitle': '实时出生/死亡模拟 | 基于各省人口权重',
         'born_count': '本场见证新生',
+        'death_count': '本场记录离世',
         'uv_today': '今日访客',
         'uv_total': '累计访客',
         'log_boy': '{time} - {prov} 迎来了一位男孩',
         'log_girl': '{time} - {prov} 迎来了一位女孩',
+        'log_death': '{time} - {prov} 有一位老人离世',
         'coffee_title': '请开发者喝咖啡',
         'coffee_desc': '如果这些工具帮到了你，欢迎支持老登的创作！',
         'custom_cups': '自定义数量',
@@ -140,7 +172,6 @@ TEXTS = {
         'pay_alipay': '支付宝',
         'pay_paypal': '贝宝',
         'more_app': '更多应用',
-
         'paid_btn': '🎉 我已支付，给老登打气！',
         'paid_toast': '收到！感谢你的 {count} 杯咖啡！代码写得更有劲了！❤️',
         'presets': [("☕ 提神", "由衷感谢"), ("🍗 鸡腿", "动力加倍"), ("🚀 续命", "老登不朽")],
@@ -148,17 +179,17 @@ TEXTS = {
         "coffee_title": " ",
         "pay_success": "收到！感谢打赏。代码写得更有劲了！❤️",
         "coffee_amount": "请输入打赏杯数"
-
-        
     },
     'en': {
-        'title': 'China Baby Map',
-        'subtitle': 'Real-time Simulation based on Population',
+        'title': 'China Population Map',
+        'subtitle': 'Real-time Birth/Death Simulation based on Population',
         'born_count': 'Babies Born',
+        'death_count': 'People Passed',
         'uv_today': 'Today Visitors',
         'uv_total': 'Total Visitors',
         'log_boy': '{time} - {prov} welcomed a baby boy',
         'log_girl': '{time} - {prov} welcomed a baby girl',
+        'log_death': '{time} - {prov} lost an elder',
         'coffee_title': 'Buy me a coffee',
         'coffee_desc': 'Help keep the server running!',
         'custom_cups': 'Custom Cups',
@@ -172,7 +203,6 @@ TEXTS = {
         'pay_alipay': 'Alipay',
         'pay_paypal': 'PayPal',
         'more_app': 'More Apps',
-        
         'paid_btn': '🎉 I have paid!',
         'paid_toast': 'Received! Thanks for the {count} coffees! ❤️',
         'presets': [("☕ Coffee", "Thanks"), ("🍗 Meal", "Power Up"), ("🚀 Rocket", "Amazing")],
@@ -196,8 +226,11 @@ def init_session():
         'visitor_id': str(uuid.uuid4()),
         'has_counted': False,
         'total_born': 0,
+        'total_death': 0,
         'born_log': [],
-        'map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name'])
+        'death_log': [],
+        'birth_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'born_time']),
+        'death_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'death_time'])
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -235,7 +268,7 @@ def track_stats():
     except: return 0, 0
 
 def generate_baby():
-    """生成新数据"""
+    """生成新出生数据"""
     prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
     gender = random.choice(['m', 'f'])
     # 颜色: 男孩青蓝(0, 255, 255), 女孩洋红(255, 0, 255)
@@ -250,6 +283,20 @@ def generate_baby():
         "color": color,
     }
 
+def generate_death():
+    """生成新死亡数据"""
+    prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
+    # 死亡标记颜色：红色(248, 113, 113, 200)
+    color = [248, 113, 113, 200]
+    
+    return {
+        "zh": prov["zh"],
+        "en": prov["en"],
+        "lat": prov['lat'],
+        "lon": prov['lon'],
+        "color": color,
+    }
+
 # ==========================================
 # 5. UI: 顶部 HUD
 # ==========================================
@@ -259,7 +306,7 @@ c_hud_1, c_hud_2 = st.columns([0.6, 0.4])
 with c_hud_1:
     st.markdown(f"""
     <div style="display:flex; align-items:center; gap:15px;">
-        <div style="font-size:2.5rem;">👶</div>
+        <div style="font-size:2.5rem;">👶⚰️</div>
         <div>
             <div class="hud-title">{TXT['title']}</div>
             <div class="hud-sub">{TXT['subtitle']}</div>
@@ -278,24 +325,27 @@ with c_hud_2:
     with cols[2]:
         st.markdown(f'<a href="https://laodeng.streamlit.app" target="_blank" class="nav-btn" style="text-align:center; width:100%; padding: 8px 0;">{TXT["more_app"]} ↗</a>', unsafe_allow_html=True)
 
+# ==========================================
+# 6. 双地图布局
+# ==========================================
+# 创建左右两个地图容器
+col_birth, col_death = st.columns(2, gap="large")
 
-# ==========================================
-# 7. 主界面 (地图 + 统计)
-# ==========================================
-map_placeholder = st.empty()
+# 出生地图占位符
+birth_map_placeholder = col_birth.empty()
+# 死亡地图占位符
+death_map_placeholder = col_death.empty()
+
+# 统计区域占位符
 stats_placeholder = st.empty()
 
-
 # ==========================================
-# 8. 新版咖啡打赏逻辑 (替换旧版)
+# 7. 咖啡打赏逻辑 (保持不变)
 # ==========================================
-
 def get_txt(key): 
     return TEXTS[st.session_state.language][key]
 
-#st.markdown("<br><br>", unsafe_allow_html=True)    
 c1, c2, c3 = st.columns([1, 2, 1])
-
 with c2:
     @st.dialog(" " + get_txt('coffee_title'), width="small")
     def show_coffee_window():
@@ -307,12 +357,10 @@ with c2:
         def set_val(n):
             st.session_state.coffee_num = n
             st.rerun()
-            print(f"当前咖啡杯数：{st.session_state.coffee_num}")
         
         cols = st.columns(3, gap="small")
         for i, (icon, num) in enumerate(presets):
             with cols[i]:
-                # 点击快捷键直接修改 session_state
                 if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
                     set_val(num)
                     
@@ -327,11 +375,9 @@ with c2:
         cny_total = cnt * 10
         usd_total = cnt * 2
 
-        # 4. 统一支付卡片渲染函数 (核心复用逻辑)
+        # 4. 统一支付卡片渲染函数
         def render_pay_tab(title, amount_str, color_class, img_path, qr_data_suffix, link_url=None):
-            # 使用 st.container 并开启 border 边框
             with st.container(border=True):
-                # 卡片头部 (包含支付名称和金额)
                 st.markdown(f"""
                     <div style="text-align: center; padding-bottom: 10px;">
                         <div class="pay-label {color_class}" style="margin-bottom: 5px;">{title}</div>
@@ -339,33 +385,25 @@ with c2:
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # 卡片中部：二维码或图片
-                # 调整列比例让图片在边框内更协调
                 c_img_1, c_img_2, c_img_3 = st.columns([1, 4, 1])
                 with c_img_2:
                     if os.path.exists(img_path): 
                         st.image(img_path, use_container_width=True)
                     else: 
-                        # 本地图片不存在时，生成 API 二维码作为演示
                         qr_data = f"Donate_{cny_total}_{qr_data_suffix}"
-                        # PayPal 如果是链接模式，二维码也可以指向链接
                         if link_url: qr_data = link_url
                         st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={qr_data}", use_container_width=True)
                 
-                # 卡片底部：按钮或提示文字
                 if link_url:
-                    # PayPal 等外链跳转
-                    st.write("") # 增加一点间距
+                    st.write("")
                     st.link_button(f"👉 Pay {amount_str}", link_url, type="primary", use_container_width=True)
                 else:
-                    # 扫码提示
                     st.markdown(f"""
                         <div class="pay-instruction" style="text-align: center; padding-top: 10px;">
                             请使用手机扫描上方二维码
                         </div>
                     """, unsafe_allow_html=True)
                     
-            
         # 5. 支付方式 Tabs
         st.write("")
         t1, t2, t3 = st.tabs([get_txt('pay_wechat'), get_txt('pay_alipay'), get_txt('pay_paypal')])
@@ -377,7 +415,6 @@ with c2:
             render_pay_tab("Alipay", f"¥{cny_total}", "color-alipay", "ali_pay.jpg", "Alipay")
             
         with t3:
-            # PayPal 特殊处理：提供 URL 跳转
             render_pay_tab("PayPal", f"${usd_total}", "color-paypal", "paypal.png", "PayPal", "https://paypal.me/ytqz")
         
         # 6. 确认按钮
@@ -392,61 +429,89 @@ with c2:
     if st.button(get_txt('coffee_btn'), use_container_width=True):
         show_coffee_window()
 
-
-        
 # ==========================================
-# 8. 动画主循环
+# 8. 动画主循环 (双地图版本)
 # ==========================================
 # 视图配置
-view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.2, pitch=20)
+birth_view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.2, pitch=20)
+death_view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.2, pitch=20)
 REFRESH_RATE = 0.8
 BIRTH_PROB = 0.6
+DEATH_PROB = 0.4  # 死亡概率略低于出生
 
 while True:
     ts = time.time()
     
-    # 1. 生成新宝宝
+    # 1. 生成新出生数据
     if random.random() < BIRTH_PROB:
         baby = generate_baby()
         st.session_state.total_born += 1
         
-        # 生成日志文本
+        # 生成出生日志文本
         t_str = datetime.datetime.now().strftime('%H:%M:%S')
         prov_name = baby['zh'] if st.session_state.language == 'zh' else baby['en']
         
-        if st.session_state.language == 'zh':
-            gender_txt = "男孩" if baby['gender'] == 'm' else "女孩"
-            log_txt = TXT['log_boy' if baby['gender']=='m' else 'log_girl'].format(time=t_str, prov=prov_name)
+        if baby['gender'] == 'm':
+            log_txt = TXT['log_boy'].format(time=t_str, prov=prov_name)
         else:
-            gender_txt = "boy" if baby['gender'] == 'm' else "girl"
-            log_txt = TXT['log_boy' if baby['gender']=='m' else 'log_girl'].format(time=t_str, prov=prov_name)
+            log_txt = TXT['log_girl'].format(time=t_str, prov=prov_name)
             
         st.session_state.born_log.insert(0, {"t": log_txt, "c": baby['color']})
         if len(st.session_state.born_log) > 8: st.session_state.born_log.pop()
         
-        # 添加地图点
-        new_row = pd.DataFrame([{
+        # 添加出生地图点
+        new_birth_row = pd.DataFrame([{
             'lat': baby['lat'], 'lon': baby['lon'],
             'color': baby['color'], 'size': 30000, 
             'born_time': ts, 'name': prov_name
         }])
         
-        if st.session_state.map_data.empty:
-            st.session_state.map_data = new_row
+        if st.session_state.birth_map_data.empty:
+            st.session_state.birth_map_data = new_birth_row
         else:
-            st.session_state.map_data = pd.concat([st.session_state.map_data, new_row], ignore_index=True)
+            st.session_state.birth_map_data = pd.concat([st.session_state.birth_map_data, new_birth_row], ignore_index=True)
 
-    # 2. 清理过期数据 (2.5秒消失)
-    if not st.session_state.map_data.empty:
-        st.session_state.map_data = st.session_state.map_data[
-            st.session_state.map_data['born_time'] > (ts - 2.5)
+    # 2. 生成新死亡数据
+    if random.random() < DEATH_PROB:
+        death = generate_death()
+        st.session_state.total_death += 1
+        
+        # 生成死亡日志文本
+        t_str = datetime.datetime.now().strftime('%H:%M:%S')
+        prov_name = death['zh'] if st.session_state.language == 'zh' else death['en']
+        log_txt = TXT['log_death'].format(time=t_str, prov=prov_name)
+            
+        st.session_state.death_log.insert(0, {"t": log_txt, "c": death['color']})
+        if len(st.session_state.death_log) > 8: st.session_state.death_log.pop()
+        
+        # 添加死亡地图点
+        new_death_row = pd.DataFrame([{
+            'lat': death['lat'], 'lon': death['lon'],
+            'color': death['color'], 'size': 30000, 
+            'death_time': ts, 'name': prov_name
+        }])
+        
+        if st.session_state.death_map_data.empty:
+            st.session_state.death_map_data = new_death_row
+        else:
+            st.session_state.death_map_data = pd.concat([st.session_state.death_map_data, new_death_row], ignore_index=True)
+
+    # 3. 清理过期数据 (2.5秒消失)
+    if not st.session_state.birth_map_data.empty:
+        st.session_state.birth_map_data = st.session_state.birth_map_data[
+            st.session_state.birth_map_data['born_time'] > (ts - 2.5)
+        ]
+    
+    if not st.session_state.death_map_data.empty:
+        st.session_state.death_map_data = st.session_state.death_map_data[
+            st.session_state.death_map_data['death_time'] > (ts - 2.5)
         ]
 
-    # 3. 渲染统计区 (HUD)
+    # 4. 渲染统计区
     with stats_placeholder.container():
-        c1, c2, c3 = st.columns([1, 1, 1])
+        c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
         
-        # 左侧数字
+        # 出生统计
         with c1:
             st.markdown(f"""
             <div class="stat-box">
@@ -454,20 +519,35 @@ while True:
                 <div class="stat-label">{TXT['born_count']}</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        # 中间/右侧日志
+        
+        # 出生日志
         with c2:
             logs_html = ""
             for log in st.session_state.born_log[:5]:
-                # 颜色处理
-                color_css = "#22d3ee" if log['c'][0] == 0 else "#e879f9" # 青 vs 粉
+                color_css = "#22d3ee" if log['c'][0] == 0 else "#e879f9"
                 logs_html += f'<div class="log-item" style="color:{color_css}">{log["t"]}</div>'
             st.markdown(f'<div class="log-container">{logs_html}</div>', unsafe_allow_html=True)
+        
+        # 死亡日志
+        with c3:
+            death_logs_html = ""
+            for log in st.session_state.death_log[:5]:
+                death_logs_html += f'<div class="death-log-item">{log["t"]}</div>'
+            st.markdown(f'<div class="log-container">{death_logs_html}</div>', unsafe_allow_html=True)
+        
+        # 死亡统计
+        with c4:
+            st.markdown(f"""
+            <div class="stat-box">
+                <div class="stat-death-val">{st.session_state.total_death}</div>
+                <div class="stat-label">{TXT['death_count']}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    # 4. 渲染地图
-    layer = pdk.Layer(
+    # 5. 渲染出生地图
+    birth_layer = pdk.Layer(
         "ScatterplotLayer",
-        data=st.session_state.map_data,
+        data=st.session_state.birth_map_data,
         get_position='[lon, lat]',
         get_fill_color='color',
         get_radius='size',
@@ -482,10 +562,9 @@ while True:
         get_line_width=2000,
     )
     
-    # 增加省份文字层
-    text_layer = pdk.Layer(
+    birth_text_layer = pdk.Layer(
         "TextLayer",
-        data=st.session_state.map_data,
+        data=st.session_state.birth_map_data,
         get_position='[lon, lat]',
         get_text='name',
         get_color=[255, 255, 255],
@@ -494,14 +573,55 @@ while True:
         get_text_anchor="'middle'"
     )
 
-    deck = pdk.Deck(
+    birth_deck = pdk.Deck(
         map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        layers=[layer, text_layer],
-        initial_view_state=view_state,
+        layers=[birth_layer, birth_text_layer],
+        initial_view_state=birth_view_state,
         tooltip=False
     )
     
-    with map_placeholder:
-        st.pydeck_chart(deck, use_container_width=True)
+    with birth_map_placeholder:
+        st.markdown(f"<h3 style='text-align:center; color:#4ade80; margin-bottom:10px;'>👶 {TXT['born_count']}</h3>", unsafe_allow_html=True)
+        st.pydeck_chart(birth_deck, use_container_width=True)
+
+    # 6. 渲染死亡地图
+    death_layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=st.session_state.death_map_data,
+        get_position='[lon, lat]',
+        get_fill_color='color',
+        get_radius='size',
+        pickable=False,
+        opacity=0.8,
+        stroked=True,
+        filled=True,
+        radius_scale=6,
+        radius_min_pixels=5,
+        radius_max_pixels=60,
+        get_line_color=[255, 255, 255, 100],
+        get_line_width=2000,
+    )
+    
+    death_text_layer = pdk.Layer(
+        "TextLayer",
+        data=st.session_state.death_map_data,
+        get_position='[lon, lat]',
+        get_text='name',
+        get_color=[255, 255, 255],
+        get_size=15,
+        get_alignment_baseline="'bottom'",
+        get_text_anchor="'middle'"
+    )
+
+    death_deck = pdk.Deck(
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        layers=[death_layer, death_text_layer],
+        initial_view_state=death_view_state,
+        tooltip=False
+    )
+    
+    with death_map_placeholder:
+        st.markdown(f"<h3 style='text-align:center; color:#f87171; margin-bottom:10px;'>⚰️ {TXT['death_count']}</h3>", unsafe_allow_html=True)
+        st.pydeck_chart(death_deck, use_container_width=True)
 
     time.sleep(REFRESH_RATE)
