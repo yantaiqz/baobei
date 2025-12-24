@@ -270,12 +270,9 @@ stats_placeholder = st.empty()
 
 # 底部打赏区
 st.markdown("---")
-# ==========================================
-# 8. 新版咖啡打赏逻辑 (替换旧版)
-# ==========================================
 
 def get_txt(key): 
-    return lang_texts[st.session_state.language][key]
+    return TEXTS[st.session_state.language][key]
 
 st.markdown("<br><br>", unsafe_allow_html=True)    
 c1, c2, c3 = st.columns([1, 2, 1])
