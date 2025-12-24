@@ -128,7 +128,7 @@ TEXTS = {
         'log_boy': '{time} - {prov} 迎来了一位男孩',
         'log_girl': '{time} - {prov} 迎来了一位女孩',
         'coffee_title': '请开发者喝咖啡',
-        'coffee_desc': '服务器运行需要成本，感谢您的支持！',
+        'coffee_desc': '如果这些工具帮到了你，欢迎支持老登的创作！',
         'custom_cups': '自定义数量',
         'total_label': '总金额',
         'btn_pay': '我已支付，确认支持',
@@ -308,8 +308,18 @@ with c2:
         for i, (icon, num) in enumerate(presets):
             with cols[i]:
                 # 点击快捷键直接修改 session_state
-                if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
-                    set_val(num)
+                #if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
+                 #   set_val(num)
+
+                # 修复：使用 on_click 参数，确保在页面重绘前更新状态
+                    st.button(
+                        f"{icon} {num}", 
+                        use_container_width=True, 
+                        key=f"p_btn_{i}",
+                        on_click=update_coffee,  # <--- 关键修改
+                        args=(num,)              # <--- 关键修改
+                    )
+            
         st.write("")
 
         # 3. 自定义输入与金额计算
