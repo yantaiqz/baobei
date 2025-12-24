@@ -78,7 +78,7 @@ st.markdown("""
     }
     .nav-btn:hover { background: rgba(255,255,255,0.2); color: white; }
     
-    /* === 省份数据表格样式修正 === */
+    /* === 表格样式修正 === */
     [data-testid="stDataFrame"] { background: transparent !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -171,7 +171,6 @@ def init_session():
         'death_log': [],
         'birth_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'born_time']),
         'death_map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name', 'death_time']),
-        # 新增：省份统计字典 {prov_name_zh: {'born': 0, 'death': 0}}
         'prov_stats': {p['zh']: {'born': 0, 'death': 0} for p in PROVINCES}
     }
     for k, v in defaults.items():
@@ -207,19 +206,13 @@ def generate_baby():
     prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
     gender = random.choice(['m', 'f'])
     color = [0, 255, 255, 200] if gender == 'm' else [255, 0, 255, 200]
-    
-    # === 核心修改：记录分省数据 ===
     st.session_state.prov_stats[prov['zh']]['born'] += 1
-    
     return {"zh": prov["zh"], "en": prov["en"], "gender": gender, "lat": prov['lat'], "lon": prov['lon'], "color": color}
 
 def generate_death():
     prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
     color = [248, 113, 113, 200] # Red
-    
-    # === 核心修改：记录分省数据 ===
     st.session_state.prov_stats[prov['zh']]['death'] += 1
-    
     return {"zh": prov["zh"], "en": prov["en"], "lat": prov['lat'], "lon": prov['lon'], "color": color}
 
 # ==========================================
@@ -255,16 +248,16 @@ col_birth, col_death = st.columns(2, gap="medium")
 birth_map_placeholder = col_birth.empty()
 death_map_placeholder = col_death.empty()
 
-# 统计区域占位符 (包含数字和日志)
+# 统计区域
 stats_placeholder = st.empty()
 
-# 省份数据表格占位符 (新增)
+# 省份数据表格
 st.markdown("---")
 prov_table_placeholder = st.empty()
 
 
 # ==========================================
-# 7. 修复后的咖啡打赏
+# 7. 咖啡打赏 (核心修复区域)
 # ==========================================
 c1, c2, c3 = st.columns([1, 2, 1])
 with c2:
@@ -272,18 +265,18 @@ with c2:
     def show_coffee_window():
         st.markdown(f"""<div style="text-align:center; color:#666; margin-bottom:15px;">{get_txt('coffee_desc')}</div>""", unsafe_allow_html=True)
         
-        # 修复1：快捷按钮
+        # --- 修复 1：快捷按钮 ---
+        # 逻辑：点击后直接修改 Session State 并 Rerun，强制刷新下方 Input 框的值
         presets = [("☕", 1), ("🍗", 3), ("🚀", 5)]
         cols = st.columns(3, gap="small")
         for i, (icon, num) in enumerate(presets):
             with cols[i]:
-                # 点击后直接更新 session_state 并 rerun，确保 Input 框同步
                 if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
                     st.session_state.coffee_num = num
                     st.rerun()
 
         st.write("")
-        # 修复2：绑定 value 到 session_state，确保双向绑定
+        # Input 绑定 Session State，确保双向同步
         cnt = st.number_input(get_txt('coffee_amount'), 1, 100, step=1, key='coffee_num')
         
         cny_total = cnt * 10
@@ -312,12 +305,18 @@ with c2:
         with t3: render_pay_tab("PayPal", f"${usd_total}", "color-paypal", "paypal.png", "PayPal", "https://paypal.me/ytqz")
         
         st.write("")
-        # 修复3：支付成功动画逻辑
+        
+        # --- 修复 2：打赏动画按钮 ---
+        # 逻辑：点击 -> 吐司提示 -> 气球动画 -> 睡眠展示 -> 关闭弹窗(Rerun)
         if st.button("🎉 " + get_txt('pay_success').split('!')[0], type="primary", use_container_width=True):
-            st.balloons() # 动画
-            st.success(get_txt('pay_success').format(count=cnt)) # 提示
-            time.sleep(1.5) # 等待
-            st.rerun() # 关闭/刷新
+            # 1. 顶部弹出 Toast，提示会持久化一点
+            st.toast(get_txt('pay_success').format(count=cnt), icon="❤️")
+            # 2. 页面飘气球
+            st.balloons()
+            # 3. 等待足够时间让用户看到动画 (在 dialog 关闭前)
+            time.sleep(2.0)
+            # 4. 刷新页面（同时也关闭了 dialog）
+            st.rerun()
 
     if st.button(get_txt('coffee_btn'), use_container_width=True):
         show_coffee_window()
@@ -398,21 +397,16 @@ while True:
         st.markdown(f"<h4 style='text-align:center; color:#f87171'>{TXT['death_count']}</h4>", unsafe_allow_html=True)
         st.pydeck_chart(get_deck(st.session_state.death_map_data, 'death_time', '#f87171'), use_container_width=True)
         
-    # 6. 渲染各省数据监控看板 (新增部分)
+    # 6. 渲染各省数据监控看板
     with prov_table_placeholder.container():
         with st.expander(TXT['stat_tab_title'], expanded=True):
-            # 将字典转换为 DataFrame
             df_stats = pd.DataFrame.from_dict(st.session_state.prov_stats, orient='index')
             df_stats = df_stats.reset_index().rename(columns={'index': '省份', 'born': '新生', 'death': '离世'})
-            
-            # 如果是英文模式，做简单的映射
             if st.session_state.language == 'en':
-                # 简单处理：这里由于字典Key是中文，暂时只显示中文名，或者你可以做一个Map
                 df_stats = df_stats.rename(columns={'省份': 'Province', '新生': 'Born', '离世': 'Deaths'})
             
-            # 排序：按活跃度（出生+死亡）降序
             df_stats['Total'] = df_stats.iloc[:, 1] + df_stats.iloc[:, 2]
-            df_stats = df_stats.sort_values(by='Total', ascending=False).head(10) # 只显示前10
+            df_stats = df_stats.sort_values(by='Total', ascending=False).head(10)
             
             st.dataframe(
                 df_stats[['省份', '新生', '离世'] if st.session_state.language == 'zh' else ['Province', 'Born', 'Deaths']],
