@@ -271,8 +271,8 @@ def create_map_layers(data, layer_type="birth"):
     common_layer_props = {
         "filled": True,
         "opacity": 0.8,
-        "radius_min_pixels": 5,
-        "radius_max_pixels": 60,
+        "radius_min_pixels": 10,
+        "radius_max_pixels": 120,
         "get_line_color": [255, 255, 255, 100],
         "get_line_width": 2000
     }
@@ -294,7 +294,7 @@ def create_map_layers(data, layer_type="birth"):
         get_position='[lon, lat]',
         get_text='name',
         get_color=[255, 255, 255],
-        get_size=15,
+        get_size=20,
         get_alignment_baseline="'bottom'",
         get_text_anchor="'middle'"
     )
@@ -510,7 +510,7 @@ while True:
             'lat': baby['lat'],
             'lon': baby['lon'],
             'color': baby['color'],
-            'size': 30000,
+            'size': 80000,
             'born_time': ts,
             'name': p_name
         }])
