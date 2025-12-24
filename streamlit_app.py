@@ -205,6 +205,9 @@ def init_session():
 init_session()
 TXT = TEXTS[st.session_state.language]
 
+if 'coffee_num' not in st.session_state:
+    st.session_state.coffee_num = 1
+    
 # ==========================================
 # 4. 核心逻辑函数
 # ==========================================
@@ -308,18 +311,8 @@ with c2:
         for i, (icon, num) in enumerate(presets):
             with cols[i]:
                 # 点击快捷键直接修改 session_state
-                #if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
-                 #   set_val(num)
-
-                # 修复：使用 on_click 参数，确保在页面重绘前更新状态
-                    st.button(
-                        f"{icon} {num}", 
-                        use_container_width=True, 
-                        key=f"p_btn_{i}",
-                        on_click=update_coffee,  # <--- 关键修改
-                        args=(num,)              # <--- 关键修改
-                    )
-            
+                if st.button(f"{icon} {num}", use_container_width=True, key=f"p_btn_{i}"): 
+                    set_val(num)            
         st.write("")
 
         # 3. 自定义输入与金额计算
