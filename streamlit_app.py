@@ -25,7 +25,7 @@ st.markdown("""
         background-color: #0e1117 !important;
         color: #e0e0e0;
     }
-    #MainMenu, footer, header {visibility: hidden;}
+    MainMenu, footer, header {visibility: hidden;}
     .block-container { padding-top: 1rem; padding-bottom: 0rem; }
 
     /* === 顶部 HUD 仪表盘 === */
@@ -136,7 +136,12 @@ TEXTS = {
         'lock_title': '免费体验结束',
         'lock_msg': '请解锁以继续观看实时数据。',
         'unlock_btn': '验证并解锁',
+        'pay_wechat': '微信支付',
+        'pay_alipay': '支付宝',
+        'pay_paypal': '贝宝',
+
         'more_app': '更多应用'
+        
     },
     'en': {
         'title': 'China Baby Map',
@@ -155,6 +160,9 @@ TEXTS = {
         'lock_title': 'Trial Ended',
         'lock_msg': 'Please unlock to view real-time data.',
         'unlock_btn': 'Unlock',
+        'pay_wechat': 'WeChat',
+        'pay_alipay': 'Alipay',
+        'pay_paypal': 'PayPal',
         'more_app': 'More Apps'
     }
 }
@@ -309,6 +317,7 @@ with col_b2:
         with tabs[1]: st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Alipay_{total_price}", width=150)
         with tabs[2]: st.link_button(f"PayPal ${cnt*2}", "https://paypal.me/", use_container_width=True)
 
+        
         if st.button(TXT['btn_pay'], type="primary", use_container_width=True):
             st.balloons()
             st.toast(TXT['toast_thanks'].format(count=cnt))
