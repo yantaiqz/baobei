@@ -9,415 +9,382 @@ import time
 import random
 
 # ==========================================
-# 1. 全局配置
+# 1. 全局配置 & CSS
 # ==========================================
 st.set_page_config(
-    page_title="中国宝宝地图 | AI Data",
+    page_title="China Baby Map | 实时出生模拟",
     page_icon="👶",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# ==========================================
-# 2. 状态初始化 (合并)
-# ==========================================
-# --- 模板状态 ---
-if 'start_time' not in st.session_state:
-    st.session_state.start_time = datetime.datetime.now()
-    st.session_state.access_status = 'free'
-    st.session_state.unlock_time = None
-if 'language' not in st.session_state:
-    st.session_state.language = 'zh'
-if 'coffee_num' not in st.session_state:
-    st.session_state.coffee_num = 1
-if 'visitor_id' not in st.session_state:
-    st.session_state["visitor_id"] = str(uuid.uuid4())
-if 'has_counted' not in st.session_state:
-    st.session_state.has_counted = False
-
-# --- 地图状态 ---
-if 'total_born' not in st.session_state:
-    st.session_state.total_born = 0
-if 'born_log' not in st.session_state:
-    st.session_state.born_log = [] 
-if 'map_data' not in st.session_state:
-    st.session_state.map_data = pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name'])
-
-# ==========================================
-# 3. 样式合并 (暗黑模式适配)
-# ==========================================
 st.markdown("""
 <style>
-    /* === 全局暗黑背景 === */
+    /* === 全局暗黑沉浸式背景 === */
     .stApp {
         background-color: #0e1117 !important;
-        color: #fff;
+        color: #e0e0e0;
     }
     #MainMenu, footer, header {visibility: hidden;}
+    .block-container { padding-top: 1rem; padding-bottom: 0rem; }
 
-    /* === 右上角按钮 (暗黑版) === */
-    .neal-btn {
-        font-family: 'Inter', sans-serif; 
-        background: rgba(255,255,255,0.1);
-        border: 1px solid rgba(255,255,255,0.2);
-        color: #eee; font-weight: 600;
-        padding: 8px 16px; border-radius: 8px; cursor: pointer;
-        transition: all 0.2s; display: inline-flex; align-items: center;
-        justify-content: center; text-decoration: none !important;
-        width: 100%;
+    /* === 顶部 HUD 仪表盘 === */
+    .hud-container {
+        display: flex; justify-content: space-between; align-items: center;
+        background: rgba(20, 20, 20, 0.6);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding: 15px 30px; margin: -1rem -1rem 20px -1rem;
+        position: sticky; top: 0; z-index: 999;
     }
-    .neal-btn:hover { background: rgba(255,255,255,0.2); border-color: #fff; transform: translateY(-1px); }
-    .neal-btn-link { text-decoration: none; width: 100%; display: block; }
+    .hud-title { font-size: 1.5rem; font-weight: 800; color: #fff; letter-spacing: 1px; }
+    .hud-sub { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 2px; }
+    
+    /* === 统计数字样式 === */
+    .stat-box { text-align: center; padding: 0 20px; }
+    .stat-val { font-size: 1.8rem; font-weight: 700; color: #4ade80; font-family: 'Courier New', monospace; }
+    .stat-label { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; margin-top: -5px; }
 
-    /* === 统计条 (暗黑版) === */
-    .stats-bar {
-        display: flex; justify-content: center; gap: 25px; margin-top: 20px; 
-        padding: 15px 25px; 
-        background: rgba(255, 255, 255, 0.05); /* 半透明背景 */
-        border-radius: 50px; 
-        border: 1px solid rgba(255,255,255,0.1); 
-        color: #aaa; font-size: 0.85rem; 
-        width: fit-content; margin-left: auto; margin-right: auto; 
+    /* === 实时日志样式 === */
+    .log-container {
+        height: 150px; overflow-y: hidden;
+        mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
     }
-    .stats-num { font-weight:700; color:#fff; }
+    .log-item {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 0.85rem; margin-bottom: 6px;
+        text-shadow: 0 0 5px rgba(0,0,0,0.5);
+    }
 
-    /* === 咖啡卡片 (暗黑版) === */
+    /* === 咖啡/支付卡片 === */
     .coffee-card {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-        border: 1px solid #374151; border-radius: 16px;
-        padding: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-        margin-bottom: 10px; text-align: center; color: white;
-    }
-    .price-tag-container {
-        background: rgba(220, 38, 38, 0.1); border: 1px dashed #ef4444;
-        border-radius: 12px; padding: 10px; text-align: center;
-        margin-top: 5px;
-    }
-    .price-label { color: #9ca3af; font-size: 0.8rem; }
-    .price-number { color: #f87171; font-weight: 900; font-size: 1.8rem; }
-    
-    /* === 支付卡片 === */
-    .pay-card {
         background: #1f2937; border: 1px solid #374151;
-        border-radius: 12px; padding: 20px; text-align: center;
-        margin-top: 10px; color: white;
+        border-radius: 12px; padding: 15px; text-align: center; color: white; margin-bottom: 15px;
     }
-    .pay-amount-display { font-family: monospace; font-size: 1.8rem; font-weight: 800; margin: 10px 0; color: white; }
-    .pay-instruction { font-size: 0.8rem; color: #9ca3af; margin-top: 15px; }
+    .pay-amount { font-size: 2rem; font-weight: 800; color: #f87171; margin: 10px 0; }
+    .pay-btn { width: 100%; border-radius: 8px; font-weight: 600; }
     
-    /* === 地图统计卡片 === */
-    .metric-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 10px; padding: 15px;
-        text-align: center; color: white; margin-bottom: 10px;
+    /* === 右上角按钮 === */
+    .nav-btn {
+        background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1);
+        color: #ddd; padding: 5px 12px; border-radius: 20px; cursor: pointer;
+        font-size: 0.8rem; text-decoration: none; display: inline-block;
     }
-    .big-number {
-        font-size: 2.5rem; font-weight: 800;
-        background: -webkit-linear-gradient(#eee, #999);
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-
-    /* 语言切换位置 */
-    [data-testid="button-lang_switch"] {
-        position: fixed; top: 20px; right: 120px; z-index: 9999;
-    }
+    .nav-btn:hover { background: rgba(255,255,255,0.2); color: white; }
+    
+    /* Streamlit 元素微调 */
+    [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. 常量与配置
+# 2. 核心数据 (省份 + 语言包)
 # ==========================================
-FREE_PERIOD_SECONDS = 600  # 试用增加到600秒方便演示
-ACCESS_DURATION_HOURS = 24
-UNLOCK_CODE = "vip888"
-DB_FILE = os.path.join(os.path.expanduser("~/"), "baby_map_stats.db")
 
-# 城市数据
-CITIES = [
-    {"name": "北京", "lat": 39.9042, "lon": 116.4074, "weight": 21},
-    {"name": "上海", "lat": 31.2304, "lon": 121.4737, "weight": 24},
-    {"name": "广州", "lat": 23.1291, "lon": 113.2644, "weight": 18},
-    {"name": "深圳", "lat": 22.5431, "lon": 114.0579, "weight": 17},
-    {"name": "成都", "lat": 30.5728, "lon": 104.0668, "weight": 20},
-    {"name": "重庆", "lat": 29.5630, "lon": 106.5516, "weight": 30},
-    {"name": "武汉", "lat": 30.5928, "lon": 114.3055, "weight": 13},
-    {"name": "西安", "lat": 34.3416, "lon": 108.9398, "weight": 12},
-    {"name": "杭州", "lat": 30.2741, "lon": 120.1551, "weight": 12},
-    {"name": "南京", "lat": 32.0603, "lon": 118.7969, "weight": 9},
-    {"name": "郑州", "lat": 34.7466, "lon": 113.6253, "weight": 12},
-    {"name": "长沙", "lat": 28.2282, "lon": 112.9388, "weight": 10},
-    {"name": "沈阳", "lat": 41.8057, "lon": 123.4315, "weight": 9},
-    {"name": "青岛", "lat": 36.0671, "lon": 120.3826, "weight": 10},
-    {"name": "天津", "lat": 39.0842, "lon": 117.2009, "weight": 13},
+# 省份坐标与人口权重 (2023近似数据)
+PROVINCES = [
+    {"zh": "广东", "en": "Guangdong", "lat": 23.1, "lon": 113.2, "weight": 126},
+    {"zh": "山东", "en": "Shandong", "lat": 36.6, "lon": 117.0, "weight": 101},
+    {"zh": "河南", "en": "Henan", "lat": 34.7, "lon": 113.6, "weight": 98},
+    {"zh": "四川", "en": "Sichuan", "lat": 30.6, "lon": 104.0, "weight": 83},
+    {"zh": "江苏", "en": "Jiangsu", "lat": 32.0, "lon": 118.7, "weight": 85},
+    {"zh": "河北", "en": "Hebei", "lat": 38.0, "lon": 114.5, "weight": 74},
+    {"zh": "湖南", "en": "Hunan", "lat": 28.2, "lon": 112.9, "weight": 66},
+    {"zh": "浙江", "en": "Zhejiang", "lat": 30.2, "lon": 120.1, "weight": 65},
+    {"zh": "安徽", "en": "Anhui", "lat": 31.8, "lon": 117.2, "weight": 61},
+    {"zh": "湖北", "en": "Hubei", "lat": 30.5, "lon": 114.3, "weight": 58},
+    {"zh": "广西", "en": "Guangxi", "lat": 22.8, "lon": 108.3, "weight": 50},
+    {"zh": "云南", "en": "Yunnan", "lat": 25.0, "lon": 102.7, "weight": 47},
+    {"zh": "江西", "en": "Jiangxi", "lat": 28.6, "lon": 115.9, "weight": 45},
+    {"zh": "辽宁", "en": "Liaoning", "lat": 41.8, "lon": 123.4, "weight": 42},
+    {"zh": "福建", "en": "Fujian", "lat": 26.0, "lon": 119.2, "weight": 41},
+    {"zh": "陕西", "en": "Shaanxi", "lat": 34.2, "lon": 108.9, "weight": 39},
+    {"zh": "黑龙江", "en": "Heilongjiang", "lat": 45.7, "lon": 126.6, "weight": 31},
+    {"zh": "山西", "en": "Shanxi", "lat": 37.8, "lon": 112.5, "weight": 34},
+    {"zh": "贵州", "en": "Guizhou", "lat": 26.6, "lon": 106.6, "weight": 38},
+    {"zh": "重庆", "en": "Chongqing", "lat": 29.5, "lon": 106.5, "weight": 32},
+    {"zh": "吉林", "en": "Jilin", "lat": 43.8, "lon": 125.3, "weight": 23},
+    {"zh": "甘肃", "en": "Gansu", "lat": 36.0, "lon": 103.8, "weight": 24},
+    {"zh": "内蒙古", "en": "Inner Mongolia", "lat": 40.8, "lon": 111.7, "weight": 24},
+    {"zh": "新疆", "en": "Xinjiang", "lat": 43.8, "lon": 87.6, "weight": 25},
+    {"zh": "上海", "en": "Shanghai", "lat": 31.2, "lon": 121.4, "weight": 24},
+    {"zh": "北京", "en": "Beijing", "lat": 39.9, "lon": 116.4, "weight": 21},
+    {"zh": "天津", "en": "Tianjin", "lat": 39.0, "lon": 117.2, "weight": 13},
+    {"zh": "海南", "en": "Hainan", "lat": 20.0, "lon": 110.3, "weight": 10},
+    {"zh": "宁夏", "en": "Ningxia", "lat": 38.4, "lon": 106.2, "weight": 7},
+    {"zh": "青海", "en": "Qinghai", "lat": 36.6, "lon": 101.7, "weight": 5},
+    {"zh": "西藏", "en": "Tibet", "lat": 29.6, "lon": 91.1, "weight": 3},
 ]
-CITY_CHOICES = [c for c in CITIES]
-CITY_WEIGHTS = [c['weight'] for c in CITIES]
+PROV_WEIGHTS = [p['weight'] for p in PROVINCES]
 
-# 多语言文本
-lang_texts = {
+TEXTS = {
     'zh': {
-        'coffee_title': '请老登喝杯咖啡 ☕',
-        'coffee_desc': '服务器还在燃烧，电费还没着落...',
-        'custom_count': '自定义数量 (杯)',
-        'total_label': '总计投入',
-        'pay_wechat': '微信支付',
-        'pay_alipay': '支付宝',
-        'pay_paypal': 'PayPal',
-        'paid_btn': '🎉 我已支付，给老登打气！',
-        'paid_toast': '收到！感谢你的 {count} 杯咖啡！地图加载更快了！❤️',
-        'coffee_btn': '☕ 支持服务器电费',
-        'coffee_amount': '请输入打赏杯数',
-        'visitor_today': '今日 UV',
-        'visitor_total': '历史 UV',
-        'lock_msg': '🔒 免费试用结束',
-        'lock_desc': '为了防止服务器被挤爆，请解锁完整访问权限。',
+        'title': '中国宝宝地图',
+        'subtitle': '实时模拟数据 | 基于各省人口权重',
+        'born_count': '本场见证新生',
+        'uv_today': '今日访客',
+        'uv_total': '累计访客',
+        'log_boy': '{time} - {prov} 迎来了一位男孩',
+        'log_girl': '{time} - {prov} 迎来了一位女孩',
+        'coffee_title': '请开发者喝咖啡',
+        'coffee_desc': '服务器运行需要成本，感谢您的支持！',
+        'custom_cups': '自定义数量',
+        'total_label': '总金额',
+        'btn_pay': '我已支付，确认支持',
+        'toast_thanks': '收到！感谢您的 {count} 杯咖啡！❤️',
+        'lock_title': '免费体验结束',
+        'lock_msg': '请解锁以继续观看实时数据。',
         'unlock_btn': '验证并解锁',
-        'more_apps': '✨ 更多好玩应用'
+        'more_app': '更多应用'
     },
     'en': {
-        'coffee_title': 'Buy me a coffee ☕',
-        'coffee_desc': 'Server costs are real. Help keep this alive!',
-        'custom_count': 'Custom count (cups)',
-        'total_label': 'Total',
-        'pay_wechat': 'WeChat',
-        'pay_alipay': 'Alipay',
-        'pay_paypal': 'PayPal',
-        'paid_btn': '🎉 I have paid!',
-        'paid_toast': 'Received! Thanks for the {count} coffees! ❤️',
-        'coffee_btn': '☕ Support Server',
-        'coffee_amount': 'Enter Coffee Count',
-        'visitor_today': 'Today UV',
-        'visitor_total': 'Total UV',
-        'lock_msg': '🔒 Trial Ended',
-        'lock_desc': 'Please unlock for full access.',
+        'title': 'China Baby Map',
+        'subtitle': 'Real-time Simulation based on Population',
+        'born_count': 'Babies Born',
+        'uv_today': 'Today Visitors',
+        'uv_total': 'Total Visitors',
+        'log_boy': '{time} - {prov} welcomed a baby boy',
+        'log_girl': '{time} - {prov} welcomed a baby girl',
+        'coffee_title': 'Buy me a coffee',
+        'coffee_desc': 'Help keep the server running!',
+        'custom_cups': 'Custom Cups',
+        'total_label': 'Total Amount',
+        'btn_pay': 'I have paid',
+        'toast_thanks': 'Received! Thanks for {count} coffees! ❤️',
+        'lock_title': 'Trial Ended',
+        'lock_msg': 'Please unlock to view real-time data.',
         'unlock_btn': 'Unlock',
-        'more_apps': '✨ More Apps'
+        'more_app': 'More Apps'
     }
 }
-current_text = lang_texts[st.session_state.language]
 
 # ==========================================
-# 5. 辅助函数 (DB & 生成)
+# 3. 状态管理
 # ==========================================
+def init_session():
+    defaults = {
+        'start_time': datetime.datetime.now(),
+        'access_status': 'free',
+        'language': 'zh',
+        'coffee_num': 1,
+        'visitor_id': str(uuid.uuid4()),
+        'has_counted': False,
+        'total_born': 0,
+        'born_log': [],
+        'map_data': pd.DataFrame(columns=['lat', 'lon', 'color', 'size', 'name'])
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state: st.session_state[k] = v
+
+init_session()
+TXT = TEXTS[st.session_state.language]
+
+# ==========================================
+# 4. 核心逻辑函数
+# ==========================================
+DB_FILE = os.path.expanduser("~/baby_map.db")
+
 def track_stats():
-    """UV/PV 统计逻辑"""
+    """轻量级 SQLite 统计"""
     try:
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS daily_traffic (date TEXT PRIMARY KEY, pv_count INTEGER DEFAULT 0)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS visitors (visitor_id TEXT PRIMARY KEY, last_visit_date TEXT)''')
-        
+        c.execute('''CREATE TABLE IF NOT EXISTS stats (date TEXT, type TEXT, val INTEGER, UNIQUE(date, type))''')
         today = datetime.datetime.utcnow().date().isoformat()
-        vid = st.session_state["visitor_id"]
         
         if not st.session_state.has_counted:
-            c.execute("INSERT OR IGNORE INTO daily_traffic (date, pv_count) VALUES (?, 0)", (today,))
-            c.execute("UPDATE daily_traffic SET pv_count = pv_count + 1 WHERE date=?", (today,))
-            c.execute("INSERT OR REPLACE INTO visitors (visitor_id, last_visit_date) VALUES (?, ?)", (vid, today))
+            c.execute("INSERT OR IGNORE INTO stats VALUES (?, 'pv', 0)", (today,))
+            c.execute("UPDATE stats SET val = val + 1 WHERE date=? AND type='pv'", (today,))
+            c.execute("INSERT OR IGNORE INTO stats VALUES ('global', 'uv', 0)")
+            c.execute("UPDATE stats SET val = val + 1 WHERE type='uv'")
             conn.commit()
             st.session_state.has_counted = True
         
-        t_uv = c.execute("SELECT COUNT(*) FROM visitors WHERE last_visit_date=?", (today,)).fetchone()[0]
-        a_uv = c.execute("SELECT COUNT(*) FROM visitors").fetchone()[0]
+        c.execute("SELECT val FROM stats WHERE date=? AND type='pv'", (today,))
+        d_pv = c.fetchone()
+        c.execute("SELECT val FROM stats WHERE type='uv'")
+        t_uv = c.fetchone()
         conn.close()
-        return t_uv, a_uv
-    except:
-        return 0, 0
+        return d_pv[0] if d_pv else 1, t_uv[0] if t_uv else 1
+    except: return 0, 0
 
 def generate_baby():
-    """生成新宝宝数据"""
-    city = random.choices(CITY_CHOICES, weights=CITY_WEIGHTS, k=1)[0]
-    gender = random.choice(['男孩', '女孩'])
-    # 颜色: 男孩青色，女孩粉色 (RGB)
-    color = [0, 255, 255, 255] if gender == '男孩' else [255, 105, 180, 255]
+    """生成新数据"""
+    prov = random.choices(PROVINCES, weights=PROV_WEIGHTS, k=1)[0]
+    gender = random.choice(['m', 'f'])
+    # 颜色: 男孩青蓝(0, 255, 255), 女孩洋红(255, 0, 255)
+    color = [0, 255, 255, 200] if gender == 'm' else [255, 0, 255, 200]
+    
     return {
-        "city": city['name'],
+        "zh": prov["zh"],
+        "en": prov["en"],
         "gender": gender,
-        "lat": city['lat'],
-        "lon": city['lon'],
+        "lat": prov['lat'],
+        "lon": prov['lon'],
         "color": color,
-        "timestamp": time.time(),
-        "id": str(uuid.uuid4())
     }
 
 # ==========================================
-# 6. 顶部功能区
+# 5. UI: 顶部 HUD
 # ==========================================
-col_empty, col_lang, col_more = st.columns([0.7, 0.1, 0.2])
-with col_lang:
-    l_btn = "En" if st.session_state.language == 'zh' else "中"
-    if st.button(l_btn, key="lang_switch"):
-        st.session_state.language = 'en' if st.session_state.language == 'zh' else 'zh'
-        st.rerun()
+today_pv, total_uv = track_stats()
 
-with col_more:
+c_hud_1, c_hud_2 = st.columns([0.6, 0.4])
+with c_hud_1:
     st.markdown(f"""
-        <a href="https://neal.fun/" target="_blank" class="neal-btn-link">
-            <button class="neal-btn">{current_text['more_apps']}</button>
-        </a>""", unsafe_allow_html=True)
-
-# ==========================================
-# 7. 权限校验逻辑 (拦截器)
-# ==========================================
-current_time = datetime.datetime.now()
-access_granted = False
-
-# 检查权限
-if st.session_state.access_status == 'free':
-    time_elapsed = (current_time - st.session_state.start_time).total_seconds()
-    if time_elapsed < FREE_PERIOD_SECONDS:
-        access_granted = True
-        # 在地图上方显示倒计时
-        st.info(f"⏳ 免费体验中... 剩余 {int(FREE_PERIOD_SECONDS - time_elapsed)} 秒")
-    else:
-        st.session_state.access_status = 'locked'
-        st.rerun()
-elif st.session_state.access_status == 'unlocked':
-    access_granted = True
-    st.success("🔓 已解锁完整访问权限")
-
-# 锁定界面
-if not access_granted:
-    st.error(current_text['lock_msg'])
-    st.markdown(f"""
-    <div style="background-color: #1f2937; padding: 20px; border-radius: 12px; border: 1px solid #374151; margin-top: 15px; text-align: center;">
-        <h3 style="color:white">{current_text['lock_msg']}</h3>
-        <p style="color:#9ca3af">{current_text['lock_desc']}</p>
-        <code style="background-color: #000; padding: 5px; color: #4ade80; display:block; margin: 10px auto; width: fit-content;">解锁码: {UNLOCK_CODE}</code>
-    </div>""", unsafe_allow_html=True)
-    
-    c1, c2, c3 = st.columns([1,2,1])
-    with c2:
-        with st.form("lock_form"):
-            code = st.text_input("Code", type="password")
-            if st.form_submit_button(current_text['unlock_btn'], use_container_width=True):
-                if code == UNLOCK_CODE:
-                    st.session_state.access_status = 'unlocked'
-                    st.rerun()
-                else:
-                    st.error("Invalid Code")
-    st.stop() # 停止后续代码执行
-
-# ==========================================
-# 8. 主程序：地图与统计 (权限通过后执行)
-# ==========================================
-today_uv, total_uv = track_stats()
-
-c_main_1, c_main_2 = st.columns([0.2, 0.8])
-
-# 顶部标题
-st.markdown("<h1 style='text-align: center; color: white; margin-bottom: 0;'>👶 中国宝宝地图</h1>", unsafe_allow_html=True)
-st.markdown("<div style='text-align: center; color: #666; font-size: 0.8rem; margin-bottom: 20px;'>REAL-TIME SIMULATION DATA</div>", unsafe_allow_html=True)
-
-# 占位符容器 (用于动画)
-map_container = st.empty()
-stats_container = st.empty()
-
-# 底部功能区 (静态)
-st.markdown("---")
-f_col1, f_col2, f_col3 = st.columns([1, 2, 1])
-
-with f_col2:
-    # 底部统计条
-    st.markdown(f"""
-    <div class="stats-bar">
-        <div style="text-align: center;">
-            <div>{current_text['visitor_today']}</div>
-            <div class="stats-num">{today_uv}</div>
-        </div>
-        <div style="border-left:1px solid rgba(255,255,255,0.1); padding-left:25px; text-align: center;">
-            <div>{current_text['visitor_total']}</div>
-            <div class="stats-num">{total_uv}</div>
+    <div style="display:flex; align-items:center; gap:15px;">
+        <div style="font-size:2.5rem;">👶</div>
+        <div>
+            <div class="hud-title">{TXT['title']}</div>
+            <div class="hud-sub">{TXT['subtitle']}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+with c_hud_2:
+    # 语言切换 & 外链
+    cols = st.columns([1, 1, 1])
+    with cols[1]:
+        lang_btn = "🌐 EN" if st.session_state.language == 'zh' else "🌐 中"
+        if st.button(lang_btn, use_container_width=True):
+            st.session_state.language = 'en' if st.session_state.language == 'zh' else 'zh'
+            st.rerun()
+    with cols[2]:
+        st.markdown(f'<a href="https://neal.fun" target="_blank" class="nav-btn" style="text-align:center; width:100%; padding: 8px 0;">{TXT["more_app"]} ↗</a>', unsafe_allow_html=True)
+
+# ==========================================
+# 6. 权限锁 (Lock Screen)
+# ==========================================
+FREE_SECONDS = 600
+UNLOCK_CODE = "vip888"
+
+if st.session_state.access_status == 'free':
+    elapsed = (datetime.datetime.now() - st.session_state.start_time).total_seconds()
+    if elapsed > FREE_SECONDS:
+        st.session_state.access_status = 'locked'
+        st.rerun()
+
+if st.session_state.access_status == 'locked':
+    st.error(TXT['lock_title'])
+    st.markdown(f"""
+    <div style="text-align:center; padding:40px; background:#111; border-radius:10px; border:1px solid #333;">
+        <h2>🔒 {TXT['lock_title']}</h2>
+        <p style="color:#888;">{TXT['lock_msg']}</p>
+        <code style="display:inline-block; margin:10px 0; padding:5px 10px; background:#222; border-radius:4px; color:#4ade80;">Code: {UNLOCK_CODE}</code>
+    </div>
+    """, unsafe_allow_html=True)
     
-    st.write("")
-    
-    # 咖啡打赏弹窗
-    @st.dialog(current_text['coffee_title'], width="small")
-    def show_coffee_window():
-        st.markdown(f"""<div class="coffee-card"><p style="font-size:0.9rem;">{current_text['coffee_desc']}</p></div>""", unsafe_allow_html=True)
+    with st.form("unlock"):
+        c1, c2 = st.columns([3, 1])
+        with c1: code = st.text_input("Code", type="password", label_visibility="collapsed")
+        with c2: 
+            if st.form_submit_button(TXT['unlock_btn'], use_container_width=True):
+                if code == UNLOCK_CODE:
+                    st.session_state.access_status = 'unlocked'
+                    st.rerun()
+                else: st.error("Error")
+    st.stop()
+
+# ==========================================
+# 7. 主界面 (地图 + 统计)
+# ==========================================
+map_placeholder = st.empty()
+stats_placeholder = st.empty()
+
+# 底部打赏区
+st.markdown("---")
+col_b1, col_b2, col_b3 = st.columns([1, 2, 1])
+with col_b2:
+    # 底部统计栏
+    st.markdown(f"""
+    <div style="display:flex; justify-content:center; gap:40px; color:#888; font-size:0.8rem; margin-bottom:20px;">
+        <div style="text-align:center;">{TXT['uv_today']} <span style="color:white; font-weight:bold;">{today_pv}</span></div>
+        <div style="text-align:center;">{TXT['uv_total']} <span style="color:white; font-weight:bold;">{total_uv}</span></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 咖啡打赏逻辑 (修复版)
+    @st.dialog(TXT['coffee_title'])
+    def open_coffee():
+        st.markdown(f"<p style='text-align:center; color:#ccc'>{TXT['coffee_desc']}</p>", unsafe_allow_html=True)
         
-        # 快捷按钮
-        presets = [("☕", 1), ("🍗", 3), ("🚀", 10)]
-        cols = st.columns(3)
-        for i, (icon, num) in enumerate(presets):
-            with cols[i]:
-                if st.button(f"{icon} {num}", use_container_width=True, key=f"c_btn_{i}"): 
-                    st.session_state.coffee_num = num
+        # 1. 预设按钮 - 使用回调直接更新状态
+        def update_coffee(n):
+            st.session_state.coffee_num = n
+            
+        c_ps = st.columns(3)
+        presets = [1, 3, 10]
+        icons = ["☕", "🍗", "🚀"]
+        for i, num in enumerate(presets):
+            if c_ps[i].button(f"{icons[i]} {num}", use_container_width=True):
+                update_coffee(num)
+                st.rerun() # 强制刷新以更新下方的数字输入框
         
-        st.write("")
+        # 2. 数字输入 - 绑定 Session State
         c1, c2 = st.columns([1, 1])
         with c1:
-            cnt = st.number_input(current_text['custom_count'], 1, 100, step=1, key='coffee_num')
-        total = cnt * 10
-        with c2:
-            st.markdown(f"""<div class="price-tag-container"><div class="price-label">{current_text['total_label']}</div><div class="price-number">¥ {total}</div></div>""", unsafe_allow_html=True)
-
-        # 支付 Tabs
-        t1, t2, t3 = st.tabs([current_text['pay_wechat'], current_text['pay_alipay'], current_text['pay_paypal']])
+            cnt = st.number_input(TXT['custom_cups'], 1, 100, key='coffee_num')
         
-        def render_pay(title, amount, img):
-            st.markdown(f"""<div class="pay-card"><div class="pay-amount-display">{amount}</div><p class="pay-instruction">请扫码支付</p></div>""", unsafe_allow_html=True)
-            # 这里的图片建议替换为真实的 qrcode
-            st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Pay_{total}", width=150)
+        total_price = cnt * 10
+        with c2:
+            st.markdown(f"""
+            <div style="background:rgba(239, 68, 68, 0.1); border:1px dashed #f87171; border-radius:8px; padding:5px; text-align:center;">
+                <div style="font-size:0.7rem; color:#fca5a5">{TXT['total_label']}</div>
+                <div style="font-size:1.5rem; font-weight:800; color:#f87171">¥ {total_price}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        with t1: render_pay("WeChat", f"¥{total}", "wechat.jpg")
-        with t2: render_pay("Alipay", f"¥{total}", "alipay.jpg")
-        with t3: 
-            st.markdown(f"""<div class="pay-card"><div class="pay-amount-display">${cnt*2}</div></div>""", unsafe_allow_html=True)
-            st.link_button(f"👉 PayPal Pay ${cnt*2}", "https://paypal.me/yourid", use_container_width=True)
+        # 3. 支付选项
+        tabs = st.tabs([TXT['pay_wechat'], TXT['pay_alipay'], "PayPal"])
+        with tabs[0]: st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=WeChat_{total_price}", width=150)
+        with tabs[1]: st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Alipay_{total_price}", width=150)
+        with tabs[2]: st.link_button(f"PayPal ${cnt*2}", "https://paypal.me/", use_container_width=True)
 
-        st.write("")
-        if st.button(current_text['paid_btn'], type="primary", use_container_width=True):
+        if st.button(TXT['btn_pay'], type="primary", use_container_width=True):
             st.balloons()
-            st.success(current_text['paid_toast'].format(count=cnt))
-            time.sleep(1.5)
+            st.toast(TXT['toast_thanks'].format(count=cnt))
+            time.sleep(1)
             st.rerun()
 
-    # 触发咖啡按钮
-    if st.button(current_text['coffee_btn'], use_container_width=True):
-        show_coffee_window()
-
+    if st.button(TXT['coffee_title'], use_container_width=True):
+        open_coffee()
 
 # ==========================================
-# 9. 动画循环 (地图逻辑)
+# 8. 动画主循环
 # ==========================================
-REFRESH_RATE = 0.5 
-BIRTH_PROBABILITY = 0.6 # 概率
-
-view_state = pdk.ViewState(
-    latitude=35.0,
-    longitude=105.0,
-    zoom=3.2,
-    pitch=0,
-)
+# 视图配置
+view_state = pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.2, pitch=20)
+REFRESH_RATE = 0.8
+BIRTH_PROB = 0.6
 
 while True:
-    current_ts = time.time()
+    ts = time.time()
     
-    # 1. 生成新数据
-    if random.random() < BIRTH_PROBABILITY:
-        new_baby = generate_baby()
+    # 1. 生成新宝宝
+    if random.random() < BIRTH_PROB:
+        baby = generate_baby()
         st.session_state.total_born += 1
         
-        log_entry = {
-            "text": f"{datetime.datetime.now().strftime('%H:%M:%S')} - {new_baby['city']} 迎来了一位{new_baby['gender']}",
-            "color": "#40E0D0" if new_baby['gender'] == '男孩' else "#FF69B4"
-        }
-        st.session_state.born_log.insert(0, log_entry)
-        if len(st.session_state.born_log) > 6:
-            st.session_state.born_log.pop()
+        # 生成日志文本
+        t_str = datetime.datetime.now().strftime('%H:%M:%S')
+        prov_name = baby['zh'] if st.session_state.language == 'zh' else baby['en']
+        
+        if st.session_state.language == 'zh':
+            gender_txt = "男孩" if baby['gender'] == 'm' else "女孩"
+            log_txt = TXT['log_boy' if baby['gender']=='m' else 'log_girl'].format(time=t_str, prov=prov_name)
+        else:
+            gender_txt = "boy" if baby['gender'] == 'm' else "girl"
+            log_txt = TXT['log_boy' if baby['gender']=='m' else 'log_girl'].format(time=t_str, prov=prov_name)
             
+        st.session_state.born_log.insert(0, {"t": log_txt, "c": baby['color']})
+        if len(st.session_state.born_log) > 8: st.session_state.born_log.pop()
+        
+        # 添加地图点
         new_row = pd.DataFrame([{
-            'lat': new_baby['lat'],
-            'lon': new_baby['lon'],
-            'color': new_baby['color'],
-            'size': 20000, 
-            'born_time': current_ts,
-            'name': new_baby['city']
+            'lat': baby['lat'], 'lon': baby['lon'],
+            'color': baby['color'], 'size': 30000, 
+            'born_time': ts, 'name': prov_name
         }])
         
         if st.session_state.map_data.empty:
@@ -425,65 +392,72 @@ while True:
         else:
             st.session_state.map_data = pd.concat([st.session_state.map_data, new_row], ignore_index=True)
 
-    # 2. 清理过期数据 (3秒消失)
+    # 2. 清理过期数据 (2.5秒消失)
     if not st.session_state.map_data.empty:
         st.session_state.map_data = st.session_state.map_data[
-            st.session_state.map_data['born_time'] > (current_ts - 3.0)
+            st.session_state.map_data['born_time'] > (ts - 2.5)
         ]
 
-    # 3. 渲染 UI (地图 + 实时Log)
-    # 注意：stats_container 和 map_container 是在循环外定义的 empty 容器
-    with stats_container.container():
-        sc1, sc2, sc3 = st.columns([1, 1, 1])
-        with sc2:
+    # 3. 渲染统计区 (HUD)
+    with stats_placeholder.container():
+        c1, c2, c3 = st.columns([1, 1, 1])
+        
+        # 左侧数字
+        with c1:
             st.markdown(f"""
-            <div class="metric-card">
-                <div style="font-size:0.8rem; color:#888; letter-spacing:1px;">本场见证的新生命</div>
-                <div class="big-number">{st.session_state.total_born}</div>
+            <div class="stat-box">
+                <div class="stat-val">{st.session_state.total_born}</div>
+                <div class="stat-label">{TXT['born_count']}</div>
             </div>
             """, unsafe_allow_html=True)
-        
-        # 实时日志
-        log_html = ""
-        for log in st.session_state.born_log:
-            log_html += f"<div style='text-align:center; color:{log['color']}; margin-bottom:4px; font-size:14px; font-family: monospace;'>{log['text']}</div>"
-        st.markdown(f"<div style='height: 120px; overflow:hidden;'>{log_html}</div>", unsafe_allow_html=True)
+            
+        # 中间/右侧日志
+        with c2:
+            logs_html = ""
+            for log in st.session_state.born_log[:5]:
+                # 颜色处理
+                color_css = "#22d3ee" if log['c'][0] == 0 else "#e879f9" # 青 vs 粉
+                logs_html += f'<div class="log-item" style="color:{color_css}">{log["t"]}</div>'
+            st.markdown(f'<div class="log-container">{logs_html}</div>', unsafe_allow_html=True)
 
     # 4. 渲染地图
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=st.session_state.map_data,
         get_position='[lon, lat]',
-        get_color='color',
+        get_fill_color='color',
         get_radius='size',
-        pickable=True,
-        opacity=0.9,
+        pickable=False,
+        opacity=0.8,
+        stroked=True,
         filled=True,
         radius_scale=6,
         radius_min_pixels=5,
-        radius_max_pixels=40,
+        radius_max_pixels=60,
+        get_line_color=[255, 255, 255, 100],
+        get_line_width=2000,
     )
-
+    
+    # 增加省份文字层
     text_layer = pdk.Layer(
         "TextLayer",
         data=st.session_state.map_data,
         get_position='[lon, lat]',
         get_text='name',
         get_color=[255, 255, 255],
-        get_size=14,
+        get_size=15,
         get_alignment_baseline="'bottom'",
         get_text_anchor="'middle'"
     )
 
-    r = pdk.Deck(
-        # 使用免 Token 的 CartoDB 暗黑地图
+    deck = pdk.Deck(
         map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         layers=[layer, text_layer],
         initial_view_state=view_state,
-        tooltip={"html": "<b>{name}</b>"}
+        tooltip=False
     )
     
-    with map_container:
-        st.pydeck_chart(r, use_container_width=True)
+    with map_placeholder:
+        st.pydeck_chart(deck, use_container_width=True)
 
     time.sleep(REFRESH_RATE)
