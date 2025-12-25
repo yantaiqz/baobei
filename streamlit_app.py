@@ -13,7 +13,7 @@ import random
 # ==========================================
 st.set_page_config(
     page_title="China Life & Death | 生死观测台",
-    page_icon="☯️",
+    page_icon="👶",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -139,7 +139,7 @@ PROV_WEIGHTS = [p['weight'] for p in PROVINCES]
 
 TEXTS = {
     'zh': {
-        'title': '中国人口实时模拟',
+        'title': '中国各地人口实时变化',
         'subtitle': '左侧新生 · 右侧离去',
         'born_count': '本场新生',
         'death_count': '本场离世',
@@ -330,7 +330,7 @@ c_hud_1, c_hud_2 = st.columns([0.6, 0.4])
 with c_hud_1:
     st.markdown(f"""
     <div style="display:flex; align-items:center; gap:15px;">
-        <div style="font-size:2.5rem;">☯️</div>
+        <div style="font-size:2.5rem;">👶</div>
         <div>
             <div class="hud-title">{TXT['title']}</div>
             <div class="hud-sub">{TXT['subtitle']}</div>
