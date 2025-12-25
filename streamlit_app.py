@@ -181,6 +181,7 @@ def init_session():
         'language': 'zh',
         'coffee_num': 1,
         'has_counted': False,
+        'show_donate': False, # 控制打赏模块的显示/隐藏
         'total_born': 0,
         'total_death': 0,
         'born_log': [],
@@ -334,82 +335,103 @@ st.markdown("---")
 prov_table_placeholder = st.empty()
 
 # ==========================================
-# 8. 咖啡打赏 (已 Unhide 到主页面)
+# 8. 咖啡打赏 (默认隐藏，点击展开，支付后隐藏)
 # ==========================================
 st.write("")
 st.markdown("---")
-st.markdown(f"<h3 style='text-align:center;'>{get_txt('coffee_title')}</h3>", unsafe_allow_html=True)
-st.markdown(f"<div style='text-align:center; color:#888; margin-bottom:20px;'>{get_txt('coffee_desc')}</div>", unsafe_allow_html=True)
 
-# 使用居中布局展示支付控件
-c_don_1, c_don_2, c_don_3 = st.columns([1, 2, 1])
-with c_don_2:
-    # 快捷按钮逻辑
-    presets = [("☕", 1), ("🍗", 3), ("🚀", 5)]
-    preset_cols = st.columns(3, gap="small")
-    
-    def update_coffee_num(num):
-        st.session_state.coffee_num = num
+# 8.1 切换显示状态的回调函数
+def toggle_donate():
+    st.session_state.show_donate = not st.session_state.show_donate
 
-    for i, (icon, num) in enumerate(presets):
-        with preset_cols[i]:
-            st.button(
-                f"{icon} {num}",
-                use_container_width=True,
-                key=f"preset_btn_{num}",
-                on_click=update_coffee_num,
-                args=(num,)
+# 8.2 触发按钮（始终显示）
+# 使用 columns 居中按钮
+c_btn_1, c_btn_2, c_btn_3 = st.columns([1, 2, 1])
+with c_btn_2:
+    btn_label = "🔼 收起打赏" if st.session_state.show_donate else get_txt('coffee_btn')
+    st.button(btn_label, use_container_width=True, type="primary" if st.session_state.show_donate else "secondary", on_click=toggle_donate)
+
+# 8.3 打赏区域 (根据状态显示)
+if st.session_state.show_donate:
+    with st.container(border=True):
+        st.markdown(f"<h3 style='text-align:center;'>{get_txt('coffee_title')}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center; color:#888; margin-bottom:20px;'>{get_txt('coffee_desc')}</div>", unsafe_allow_html=True)
+
+        # 居中布局
+        c_don_1, c_don_2, c_don_3 = st.columns([1, 2, 1])
+        with c_don_2:
+            # 快捷按钮
+            presets = [("☕", 1), ("🍗", 3), ("🚀", 5)]
+            preset_cols = st.columns(3, gap="small")
+            
+            def update_coffee_num(num):
+                st.session_state.coffee_num = num
+
+            for i, (icon, num) in enumerate(presets):
+                with preset_cols[i]:
+                    st.button(
+                        f"{icon} {num}",
+                        use_container_width=True,
+                        key=f"preset_btn_{num}",
+                        on_click=update_coffee_num,
+                        args=(num,)
+                    )
+
+            st.write("")
+            # 输入框
+            cnt = st.number_input(
+                get_txt('coffee_amount'),
+                min_value=1, max_value=100, step=1,
+                key='coffee_num'
             )
-
-    st.write("")
-    # 输入框
-    cnt = st.number_input(
-        get_txt('coffee_amount'),
-        min_value=1, max_value=100, step=1,
-        key='coffee_num'
-    )
-    
-    cny_total = cnt * 10
-    usd_total = cnt * 2
-
-    # 支付展示函数
-    def render_pay_tab(title, amount_str, color_class, img_path, qr_data_suffix, link_url=None):
-        with st.container(border=True):
-            st.markdown(f"""
-                <div style="text-align: center;">
-                    <div class="pay-label {color_class}">{title}</div>
-                    <div class="pay-amount-display {color_class}">{amount_str}</div>
-                </div>
-            """, unsafe_allow_html=True)
             
-            c_img_1, c_img_2, c_img_3 = st.columns([1, 4, 1])
-            with c_img_2:
-                if os.path.exists(img_path):
-                    st.image(img_path, use_container_width=True)
-                else:
-                    qr_data = f"Donate_{cny_total}_{qr_data_suffix}"
-                    if link_url: qr_data = link_url
-                    st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={qr_data}", use_container_width=True)
-            
-            if link_url:
-                st.write("")
-                st.link_button(f"👉 Pay {amount_str}", link_url, type="primary", use_container_width=True)
-            else:
-                st.markdown("""<div style="text-align: center; font-size: 0.8rem; color:#888; margin-top: 10px;">扫描二维码支持</div>""", unsafe_allow_html=True)
+            cny_total = cnt * 10
+            usd_total = cnt * 2
 
-    # 支付 Tabs
-    t1, t2, t3 = st.tabs([get_txt('pay_wechat'), get_txt('pay_alipay'), get_txt('pay_paypal')])
-    
-    with t1: render_pay_tab("WeChat Pay", f"¥{cny_total}", "color-wechat", "wechat_pay.jpg", "WeChat")
-    with t2: render_pay_tab("Alipay", f"¥{cny_total}", "color-alipay", "ali_pay.jpg", "Alipay")
-    with t3: render_pay_tab("PayPal", f"${usd_total}", "color-paypal", "paypal.png", "PayPal", "https://paypal.me/ytqz")
-    
-    st.write("")
-    if st.button("🎉 " + get_txt('pay_success').split('!')[0], type="primary", use_container_width=True):
-        st.success(get_txt('pay_success'))
-        st.balloons()
-        time.sleep(2)
-        st.rerun()
+            # 支付展示函数
+            def render_pay_tab(title, amount_str, color_class, img_path, qr_data_suffix, link_url=None):
+                with st.container(border=True):
+                    st.markdown(f"""
+                        <div style="text-align: center;">
+                            <div class="pay-label {color_class}">{title}</div>
+                            <div class="pay-amount-display {color_class}">{amount_str}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    c_img_1, c_img_2, c_img_3 = st.columns([1, 4, 1])
+                    with c_img_2:
+                        if os.path.exists(img_path):
+                            st.image(img_path, use_container_width=True)
+                        else:
+                            qr_data = f"Donate_{cny_total}_{qr_data_suffix}"
+                            if link_url: qr_data = link_url
+                            st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={qr_data}", use_container_width=True)
+                    
+                    if link_url:
+                        st.write("")
+                        st.link_button(f"👉 Pay {amount_str}", link_url, type="primary", use_container_width=True)
+                    else:
+                        st.markdown("""<div style="text-align: center; font-size: 0.8rem; color:#888; margin-top: 10px;">扫描二维码支持</div>""", unsafe_allow_html=True)
+
+            # 支付 Tabs
+            t1, t2, t3 = st.tabs([get_txt('pay_wechat'), get_txt('pay_alipay'), get_txt('pay_paypal')])
+            
+            with t1: render_pay_tab("WeChat Pay", f"¥{cny_total}", "color-wechat", "wechat_pay.jpg", "WeChat")
+            with t2: render_pay_tab("Alipay", f"¥{cny_total}", "color-alipay", "ali_pay.jpg", "Alipay")
+            with t3: render_pay_tab("PayPal", f"${usd_total}", "color-paypal", "paypal.png", "PayPal", "https://paypal.me/ytqz")
+            
+            st.write("")
+            
+            # 确认支付按钮 (支付成功后隐藏)
+            def on_pay_success():
+                st.session_state.pay_success_trigger = True
+                
+            if st.button("🎉 " + get_txt('pay_success').split('!')[0], type="primary", use_container_width=True):
+                st.success(get_txt('pay_success'))
+                st.balloons()
+                time.sleep(2)
+                st.session_state.show_donate = False # 支付成功后自动折叠
+                st.rerun()
 
 # ==========================================
 # 9. 动画主循环
