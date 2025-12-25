@@ -386,7 +386,7 @@ with st.expander(get_txt('stat_tab_title'), expanded=True):
 # ==========================================
 # 9. 咖啡打赏 (和省份数据一样的 Expander 下拉/隐藏效果)
 # ==========================================
-st.markdown("---")
+#st.markdown("---")
 with st.expander(get_txt('coffee_title'), expanded=False):  # 默认收起
     # 触发气球动画（关键修复：在当前渲染周期执行）
     if st.session_state.show_balloons:
