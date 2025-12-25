@@ -9,7 +9,7 @@ import time
 import random
 
 # ==========================================
-# 1. 全局配置 & CSS (重点优化区域)
+# 1. 全局配置 & CSS
 # ==========================================
 st.set_page_config(
     page_title="China Life & Death | 生死观测台",
@@ -23,7 +23,7 @@ st.markdown("""
     /* === 全局暗黑沉浸式背景 === */
     .stApp {
         background-color: #0e1117 !important;
-        color: #ffffff; /* 提升全局文字亮度 */
+        color: #ffffff;
     }
     MainMenu, footer, header {visibility: hidden;}
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
@@ -31,21 +31,19 @@ st.markdown("""
     /* === 顶部 HUD 仪表盘 === */
     .hud-container {
         display: flex; justify-content: space-between; align-items: center;
-        background: rgba(20, 20, 20, 0.8); /* 增加背景不透明度，防止地图干扰文字 */
+        background: rgba(20, 20, 20, 0.8);
         backdrop-filter: blur(10px);
         border-bottom: 1px solid rgba(255,255,255,0.15);
         padding: 15px 30px; margin: -1rem -1rem 20px -1rem;
         position: sticky; top: 0; z-index: 999;
     }
     .hud-title { font-size: 1.5rem; font-weight: 800; color: #fff; letter-spacing: 1px; }
-    /* 优化：副标题颜色提亮 */
     .hud-sub { font-size: 0.8rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 2px; font-weight: 500; }
     
     /* === 统计数字样式 === */
     .stat-box { text-align: center; padding: 0 10px; }
     .stat-val { font-size: 1.8rem; font-weight: 700; color: #4ade80; font-family: 'Courier New', monospace; }
     .stat-death-val { font-size: 1.8rem; font-weight: 700; color: #f87171; font-family: 'Courier New', monospace; }
-    /* 优化：统计标签颜色提亮 */
     .stat-label { font-size: 0.8rem; color: #cbd5e1; text-transform: uppercase; margin-top: -5px; font-weight: 600; letter-spacing: 1px; }
 
     /* === 实时日志样式 === */
@@ -53,30 +51,27 @@ st.markdown("""
         height: 120px; overflow-y: hidden;
         mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
         -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
-        border-left: 2px solid #444; /* 边框调亮 */
+        border-left: 2px solid #444;
         padding-left: 10px;
     }
     .log-item {
         font-family: 'JetBrains Mono', 'Courier New', monospace;
         font-size: 0.85rem; margin-bottom: 4px;
-        text-shadow: 0 0 2px rgba(0,0,0,0.8); /* 增加文字阴影，增强对比 */
+        text-shadow: 0 0 2px rgba(0,0,0,0.8);
     }
     .death-log-item {
         font-family: 'JetBrains Mono', 'Courier New', monospace;
         font-size: 0.85rem; margin-bottom: 4px;
-        color: #fca5a5; /* 死亡日志改为更亮的红色 */
+        color: #fca5a5;
         text-shadow: 0 0 2px rgba(0,0,0,0.8);
     }
 
     /* === 咖啡/支付卡片优化 === */
     .pay-amount-display { font-size: 2rem; font-weight: 800; color: #f87171; margin: 10px 0; }
-    /* 优化：支付标签改为浅灰色 */
     .pay-label { font-size: 0.9rem; color: #cbd5e1; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    
-    /* 优化：品牌色针对黑底优化 */
-    .color-wechat { color: #4ade80 !important; } /* 更亮的绿色 */
-    .color-alipay { color: #60a5fa !important; } /* 更亮的蓝色 */
-    .color-paypal { color: #38bdf8 !important; } /* 这里的关键修改：深蓝改亮天蓝 */
+    .color-wechat { color: #4ade80 !important; }
+    .color-alipay { color: #60a5fa !important; }
+    .color-paypal { color: #38bdf8 !important; }
     
     /* === 右上角按钮 === */
     .nav-btn {
@@ -92,18 +87,15 @@ st.markdown("""
         --background-color: transparent !important;
     }
     [data-testid="stExpander"] {
-        background-color: rgba(255, 255, 255, 0.05) !important; /* 稍微提亮背景 */
+        background-color: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(255,255,255,0.1);
         border-radius: 8px;
         color: #fff !important;
     }
-    /* 强制 Expander 标题文字变白 */
     .streamlit-expanderHeader {
         color: #ffffff !important;
         font-weight: 600;
     }
-
-    /* === 地图容器优化 === */
     [data-testid="stDeckGlJsonChart"] {
         transition: opacity 0.2s ease-in-out !important;
         opacity: 1 !important;
@@ -161,6 +153,7 @@ TEXTS = {
         'coffee_title': '请开发者喝咖啡',
         'coffee_desc': '如果这些工具帮到了你，欢迎支持老登的创作！',
         'coffee_btn': "☕ 请开发者喝咖啡",
+        'coffee_close': "🔼 收起打赏",
         'pay_success': "收到！感谢打赏。代码写得更有劲了！❤️",
         'pay_wechat': '微信支付', 'pay_alipay': '支付宝', 'pay_paypal': '贝宝',
         'more_app': '更多应用', 'coffee_amount': "请输入打赏杯数",
@@ -177,6 +170,7 @@ TEXTS = {
         'coffee_title': 'Buy me a coffee',
         'coffee_desc': 'Help keep the server running!',
         'coffee_btn': "☕ Buy me a coffee",
+        'coffee_close': "🔼 Close Donation",
         'pay_success': "Received! Thanks for the coffee! ❤️",
         'pay_wechat': 'WeChat', 'pay_alipay': 'Alipay', 'pay_paypal': 'PayPal',
         'more_app': 'More Apps', 'coffee_amount': "Enter Coffee Count",
@@ -185,7 +179,7 @@ TEXTS = {
 }
 
 # ==========================================
-# 3. 状态管理
+# 3. 状态管理 (已配置 show_donate)
 # ==========================================
 def init_session():
     defaults = {
@@ -193,7 +187,7 @@ def init_session():
         'language': 'zh',
         'coffee_num': 1,
         'has_counted': False,
-        'show_donate': False,
+        'show_donate': False, # 默认隐藏
         'total_born': 0,
         'total_death': 0,
         'born_log': [],
@@ -210,9 +204,7 @@ def init_session():
 
 init_session()
 TXT = TEXTS[st.session_state.language]
-
-def get_txt(key): 
-    return TEXTS[st.session_state.language].get(key, key)
+def get_txt(key): return TEXTS[st.session_state.language].get(key, key)
 
 # ==========================================
 # 4. 核心逻辑函数
@@ -306,20 +298,29 @@ st.markdown("---")
 prov_table_placeholder = st.empty()
 
 # ==========================================
-# 8. 咖啡打赏
+# 8. 咖啡打赏 (状态控制版)
 # ==========================================
 st.write("")
 st.markdown("---")
 
+# 切换显示状态的函数
 def toggle_donate():
     st.session_state.show_donate = not st.session_state.show_donate
 
-# 触发按钮
+# 控制按钮
 c_btn_1, c_btn_2, c_btn_3 = st.columns([1, 2, 1])
 with c_btn_2:
-    btn_label = "🔼 收起打赏" if st.session_state.show_donate else get_txt('coffee_btn')
-    st.button(btn_label, use_container_width=True, type="primary" if st.session_state.show_donate else "secondary", on_click=toggle_donate)
+    # 根据状态显示不同的按钮文本
+    btn_label = get_txt('coffee_close') if st.session_state.show_donate else get_txt('coffee_btn')
+    # 使用回调函数进行状态切换，不需要 st.rerun，点击按钮会自动 rerun
+    st.button(
+        btn_label, 
+        use_container_width=True, 
+        type="primary" if st.session_state.show_donate else "secondary", 
+        on_click=toggle_donate
+    )
 
+# 条件渲染打赏区域
 if st.session_state.show_donate:
     with st.container(border=True):
         st.markdown(f"<h3 style='text-align:center; color:#ffffff;'>{get_txt('coffee_title')}</h3>", unsafe_allow_html=True)
@@ -374,7 +375,7 @@ if st.session_state.show_donate:
                 st.success(get_txt('pay_success'))
                 st.balloons()
                 time.sleep(2)
-                st.session_state.show_donate = False
+                st.session_state.show_donate = False # 支付成功后自动收起
                 st.rerun()
 
 # ==========================================
