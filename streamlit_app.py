@@ -278,7 +278,8 @@ def init_session():
         'prov_stats': {p['zh']: {'born': 0, 'death': 0, 'en': p['en']} for p in PROVINCES},
         'birth_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20),
         'death_view_state': pdk.ViewState(latitude=35.0, longitude=105.0, zoom=3.0, pitch=20),
-        'donate_success': False  # 打赏成功提示状态
+        'donate_success': False,  # 打赏成功提示状态
+        'show_balloons': False    # 气球动画触发状态
     }
     for k, v in defaults.items():
         if k not in st.session_state: 
@@ -385,11 +386,22 @@ with st.expander(get_txt('stat_tab_title'), expanded=True):
 # ==========================================
 # 9. 咖啡打赏 (和省份数据一样的 Expander 下拉/隐藏效果)
 # ==========================================
-#st.markdown("---")
+st.markdown("---")
 with st.expander(get_txt('coffee_title'), expanded=False):  # 默认收起
+    # 触发气球动画（关键修复：在当前渲染周期执行）
+    if st.session_state.show_balloons:
+        st.balloons()
+        # 执行完动画后重置状态（避免重复触发）
+        st.session_state.show_balloons = False
+        st.session_state.donate_success = True
+    
     # 打赏成功提示
     if st.session_state.donate_success:
         st.success(get_txt('pay_success'))
+        # 3秒后自动关闭提示
+        time.sleep(3)
+        st.session_state.donate_success = False
+        st.rerun()
     
     st.markdown(f"<div style='text-align:center; color:#f1f5f9; margin-bottom:20px;'>{get_txt('coffee_desc')}</div>", unsafe_allow_html=True)
 
@@ -474,17 +486,19 @@ with st.expander(get_txt('coffee_title'), expanded=False):  # 默认收起
         with t3: 
             render_pay_tab("PayPal", f"${usd_total}", "color-paypal", "paypal.png", "PayPal", "https://paypal.me/ytqz")
         
-        # 打赏成功按钮
-        st.write("")
-        def donate_success():
-            st.session_state.donate_success = True
+        # 打赏成功按钮（核心修复：先标记动画状态，再rerun）
+        def trigger_donate_success():
+            # 标记需要显示气球动画
+            st.session_state.show_balloons = True
+            # 触发rerun，让动画在新的渲染周期执行
             st.rerun()
         
+        st.write("")
         if st.button(
             "🎉 " + get_txt('pay_success').split('!')[0],
             type="primary",
             use_container_width=True,
-            on_click=donate_success
+            on_click=trigger_donate_success
         ):
             pass
 
